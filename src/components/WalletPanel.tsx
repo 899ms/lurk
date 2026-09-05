@@ -17,7 +17,7 @@ export function WalletPanel({ connectedAt }: WalletPanelProps) {
             Connected on {connectedAt.toISOString().slice(0, 10)}. Scans bill your AnyAPI wallet up
             to the spend cap you set when you authorized this app.
           </p>
-          <form action={disconnectWalletAction}>
+          <form action={disconnectWalletAction} className="self-start">
             <Button type="submit" variant="outline" size="lg">
               Disconnect
             </Button>
@@ -32,6 +32,7 @@ export function WalletPanel({ connectedAt }: WalletPanelProps) {
           <Button
             size="lg"
             nativeButton={false}
+            className="self-start"
             render={<Link href="/connect">Connect AnyAPI wallet</Link>}
           />
         </>
