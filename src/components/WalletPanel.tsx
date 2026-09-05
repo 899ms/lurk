@@ -29,7 +29,11 @@ export function WalletPanel({ connectedAt }: WalletPanelProps) {
             Not connected. Connect a wallet to get hourly scans, unlimited keywords and daily Reddit
             SEO refreshes, billed per request to your own AnyAPI account.
           </p>
-          <Button size="lg" render={<Link href="/connect">Connect AnyAPI wallet</Link>} />
+          <Button
+            size="lg"
+            nativeButton={false}
+            render={<Link href="/connect">Connect AnyAPI wallet</Link>}
+          />
         </>
       )}
     </section>

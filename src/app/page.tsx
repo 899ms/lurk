@@ -16,10 +16,11 @@ export default function MarketingPage() {
           <p>Every lead shows what its data cost, down to the request.</p>
           <p>Free to self-host, free to use. Connect an AnyAPI wallet for hourly scans.</p>
           <div className="flex gap-3">
-            <Button size="lg" render={<Link href="/app/leads">Open the app</Link>} />
+            <Button size="lg" nativeButton={false} render={<Link href="/app/leads">Open the app</Link>} />
             <Button
               variant="outline"
               size="lg"
+              nativeButton={false}
               render={<Link href="/sign-up">Create an account</Link>}
             />
           </div>

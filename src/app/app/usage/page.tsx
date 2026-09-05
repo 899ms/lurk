@@ -24,8 +24,12 @@ export default async function UsagePage({ searchParams }: UsagePageProps) {
         </p>
       </div>
       <div className="grid gap-4 md:grid-cols-4">
-        <StatCard label="Calls today" value={String(usage.calls)} />
-        <StatCard label="USD today" value={`$${usage.costUsd.toFixed(4)}`} />
+        <StatCard label="Calls today" value={String(usage.calls)} caption="AnyAPI requests" />
+        <StatCard
+          label="USD today"
+          value={`$${usage.costUsd.toFixed(4)}`}
+          caption="Billed to this project"
+        />
         <StatCard label="Fetched" value={String(usage.fetched)} caption="Paid AnyAPI calls" />
         <StatCard label="Reused" value={String(usage.reused)} caption="Answered from stored data" />
       </div>
