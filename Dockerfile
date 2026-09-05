@@ -11,6 +11,10 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
+# The runner has no node_modules of its own, so the migrator ships as one
+# self-contained file rather than as a script plus a TypeScript runtime.
+RUN ./node_modules/.bin/esbuild src/db/migrate.ts \
+    --bundle --platform=node --format=esm --outfile=migrate.mjs
 
 FROM node:22-alpine AS runner
 WORKDIR /app
@@ -19,15 +23,8 @@ RUN addgroup -S app && adduser -S app -G app
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
-# Migrations run from the entrypoint, so the image carries drizzle-kit's output,
-# the migrator entrypoint and the runtime it needs.
 COPY --from=builder /app/drizzle ./drizzle
-COPY --from=builder /app/src/db/migrate.ts ./src/db/migrate.ts
-COPY --from=builder /app/node_modules/postgres ./node_modules/postgres
-COPY --from=builder /app/node_modules/drizzle-orm ./node_modules/drizzle-orm
-COPY --from=builder /app/node_modules/tsx ./node_modules/tsx
-COPY --from=builder /app/node_modules/esbuild ./node_modules/esbuild
-COPY --from=builder /app/node_modules/.bin/tsx ./node_modules/.bin/tsx
+COPY --from=builder /app/migrate.mjs ./migrate.mjs
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
 RUN chmod +x ./docker-entrypoint.sh && chown -R app:app /app
 USER app
