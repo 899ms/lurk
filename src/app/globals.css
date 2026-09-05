@@ -1,0 +1,92 @@
+@import "tailwindcss";
+@import "../styles/tokens.css";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+/* Dark is a data attribute on <html>, matching tokens.css. */
+@custom-variant dark (&:is([data-theme="dark"] *));
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-primary: var(--primary);
+  --color-primary-fg: var(--primary-fg);
+  --color-score-hot: var(--score-hot);
+  --color-score-warm: var(--score-warm);
+  --color-score-cool: var(--score-cool);
+  --color-reddit: var(--reddit);
+
+  /* shadcn semantic names, resolved against the one token set above. */
+  --color-background: var(--bg);
+  --color-foreground: var(--fg);
+  --color-card: var(--surface);
+  --color-card-foreground: var(--fg);
+  --color-popover: var(--surface);
+  --color-popover-foreground: var(--fg);
+  --color-primary-foreground: var(--primary-fg);
+  --color-secondary: var(--surface-2);
+  --color-secondary-foreground: var(--fg);
+  --color-muted: var(--surface-2);
+  --color-muted-foreground: var(--fg-muted);
+  --color-accent: var(--surface-2);
+  --color-accent-foreground: var(--fg);
+  --color-destructive: var(--reddit);
+  --color-input: var(--border);
+  --color-ring: var(--fg-muted);
+
+  --font-sans: "Instrument Sans Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
+
+  --radius-control: var(--radius-control);
+  --radius-card: var(--radius-card);
+  --radius-frame: var(--radius-frame);
+  --radius-sm: calc(var(--radius-control) * 0.6);
+  --radius-md: calc(var(--radius-control) * 0.8);
+  --radius-lg: var(--radius-control);
+  --radius-xl: var(--radius-card);
+
+  --text-display: 48px;
+  --text-display--line-height: 1.05;
+  --text-display--letter-spacing: -0.02em;
+  --text-h2: 32px;
+  --text-h2--line-height: 1.15;
+  --text-h3: 20px;
+  --text-h3--line-height: 1.3;
+  --text-body: 15px;
+  --text-body--line-height: 1.5;
+  --text-small: 13px;
+  --text-small--line-height: 1.4;
+  --text-mono: 12px;
+  --text-mono--line-height: 1.4;
+}
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+
+  html[data-theme="dark"] {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+    font-size: var(--text-body);
+    line-height: 1.5;
+  }
+
+  * {
+    border-color: var(--color-border);
+  }
+}
+
+@utility transition-motion {
+  transition-duration: var(--motion);
+  transition-timing-function: ease;
+}
