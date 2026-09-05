@@ -1,4 +1,4 @@
-import { and, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, gte, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { usageLedger } from "@/db/schema";
 
@@ -48,18 +48,4 @@ export async function usageToday(projectIds: string[]): Promise<UsageToday> {
     reused: perSku.reduce((total, row) => total + row.reused, 0),
     perSku,
   };
-}
-
-/** Today's ledger for one project. */
-export function usageTodayForProject(projectId: string): Promise<UsageToday> {
-  return usageToday([projectId]);
-}
-
-/** Count of ledger lines ever written for a project, for empty-state copy. */
-export async function ledgerLineCount(projectId: string): Promise<number> {
-  const rows = await db()
-    .select({ total: sql<number>`count(*)::int` })
-    .from(usageLedger)
-    .where(eq(usageLedger.projectId, projectId));
-  return rows[0]?.total ?? 0;
 }
