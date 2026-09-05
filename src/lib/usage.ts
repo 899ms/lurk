@@ -1,6 +1,6 @@
-import { and, gte, inArray, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { usageLedger } from "@/db/schema";
+import { llmUsage, usageLedger } from "@/db/schema";
 
 export type SkuUsage = { sku: string; calls: number; costUsd: number; reused: number };
 
@@ -47,5 +47,32 @@ export async function usageToday(projectIds: string[]): Promise<UsageToday> {
     fetched: perSku.reduce((total, row) => total + row.calls - row.reused, 0),
     reused: perSku.reduce((total, row) => total + row.reused, 0),
     perSku,
+  };
+}
+
+export type ScanUsage = { calls: number; costUsd: number; reused: number; llmCostUsd: number };
+
+/**
+ * What one scan cost: its AnyAPI lines and its language model lines, both read
+ * from the moment the scan started. The arithmetic lives here and nowhere else.
+ */
+export async function usageSince(projectId: string, since: Date): Promise<ScanUsage> {
+  const [data] = await db()
+    .select({
+      calls: sql<number>`count(*)::int`,
+      costUsd: sql<string>`coalesce(sum(${usageLedger.costUsd}), 0)`,
+      reused: sql<number>`count(*) filter (where ${usageLedger.reused})::int`,
+    })
+    .from(usageLedger)
+    .where(and(eq(usageLedger.projectId, projectId), gte(usageLedger.at, since)));
+  const [llm] = await db()
+    .select({ costUsd: sql<string>`coalesce(sum(${llmUsage.costUsd}), 0)` })
+    .from(llmUsage)
+    .where(and(eq(llmUsage.projectId, projectId), gte(llmUsage.at, since)));
+  return {
+    calls: data?.calls ?? 0,
+    costUsd: Number(data?.costUsd ?? 0),
+    reused: data?.reused ?? 0,
+    llmCostUsd: Number(llm?.costUsd ?? 0),
   };
 }
