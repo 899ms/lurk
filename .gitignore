@@ -11,3 +11,5 @@ coverage/
 next-env.d.ts
 .next/dev/
 *.tsbuildinfo
+AGENTS.md
+CLAUDE.md
