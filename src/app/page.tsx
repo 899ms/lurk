@@ -1,31 +1,28 @@
-import Link from "next/link";
-import { Wordmark } from "@/components/Wordmark";
-import { PRODUCT_NAME } from "@/lib/brand";
-import { Button } from "@/components/ui/button";
+import { MarketingVariantA } from "@/components/marketing/MarketingVariantA";
+import { MarketingVariantB } from "@/components/marketing/MarketingVariantB";
+import { MarketingVariantC } from "@/components/marketing/MarketingVariantC";
+import { VARIANTS, VariantSwitcher, type Variant } from "@/components/marketing/VariantSwitcher";
 
-export default function MarketingPage() {
+function readVariant(value: string | string[] | undefined): Variant {
+  const first = Array.isArray(value) ? value[0] : value;
+  return VARIANTS.includes(first as Variant) ? (first as Variant) : "a";
+}
+
+type MarketingPageProps = {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+};
+
+export default async function MarketingPage({ searchParams }: MarketingPageProps) {
+  const variant = readVariant((await searchParams).v);
   return (
-    <main className="mx-auto flex min-h-dvh max-w-5xl flex-col gap-16 px-8 py-8">
-      <Wordmark />
-      <section className="grid gap-10 md:grid-cols-2">
-        <h1 className="text-display" style={{ fontWeight: 500 }}>
-          Find the Reddit posts that are ready to buy.
-        </h1>
-        <div className="flex flex-col gap-4 text-body text-fg-muted">
-          <p>{PRODUCT_NAME} scores Reddit posts and comments for buyer intent and tells you why.</p>
-          <p>Every lead shows what its data cost, down to the request.</p>
-          <p>Free to self-host, free to use. Connect an AnyAPI wallet for hourly scans.</p>
-          <div className="flex gap-3">
-            <Button size="lg" nativeButton={false} render={<Link href="/app/leads">Open the app</Link>} />
-            <Button
-              variant="outline"
-              size="lg"
-              nativeButton={false}
-              render={<Link href="/sign-up">Create an account</Link>}
-            />
-          </div>
-        </div>
-      </section>
-    </main>
+    <>
+      {/* Room under the page so the fixed variant pill never covers the footer. */}
+      <div className="pb-16">
+        {variant === "a" ? <MarketingVariantA /> : null}
+        {variant === "b" ? <MarketingVariantB /> : null}
+        {variant === "c" ? <MarketingVariantC /> : null}
+      </div>
+      <VariantSwitcher active={variant} />
+    </>
   );
 }
