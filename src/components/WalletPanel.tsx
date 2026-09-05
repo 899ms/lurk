@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { disconnectWalletAction } from "@/app/app/actions";
+import { disconnectWalletAction } from "@/app/app/settings/actions";
 
 type WalletPanelProps = { connectedAt: Date | null };
 
