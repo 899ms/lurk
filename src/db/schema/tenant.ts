@@ -53,6 +53,7 @@ export const projects = pgTable("projects", {
   geography: text("geography"),
   budgetFit: text("budget_fit"),
   voiceProfile: text("voice_profile"),
+  scoreThreshold: integer("score_threshold"),
   tierSnapshot: text("tier_snapshot"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -103,6 +104,9 @@ export const leads = pgTable(
     postId: text("post_id").references(() => redditPosts.id, { onDelete: "cascade" }),
     commentId: text("comment_id").references(() => redditComments.id, { onDelete: "cascade" }),
     score: integer("score").notNull(),
+    fit: integer("fit"),
+    intent: integer("intent"),
+    engagement: integer("engagement"),
     stage: text("stage"),
     reason: text("reason"),
     matchedPhrase: text("matched_phrase"),
@@ -188,6 +192,21 @@ export const usageLedger = pgTable(
   (t) => [index("usage_ledger_project_at_idx").on(t.projectId, t.at)],
 );
 
+/** What the house spent on the language model, so the daily cap can be read back. */
+export const llmUsage = pgTable(
+  "llm_usage",
+  {
+    id: id(),
+    projectId: text("project_id").references(() => projects.id, { onDelete: "cascade" }),
+    purpose: text("purpose").notNull(),
+    inputTokens: integer("input_tokens").notNull().default(0),
+    outputTokens: integer("output_tokens").notNull().default(0),
+    costUsd: numeric("cost_usd", { precision: 12, scale: 6 }).notNull().default("0"),
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("llm_usage_at_idx").on(t.at)],
+);
+
 export const jobs = pgTable("jobs", {
   id: id(),
   kind: text("kind").notNull(),
@@ -195,5 +214,6 @@ export const jobs = pgTable("jobs", {
   runAt: timestamp("run_at", { withTimezone: true }).notNull().defaultNow(),
   startedAt: timestamp("started_at", { withTimezone: true }),
   finishedAt: timestamp("finished_at", { withTimezone: true }),
+  progress: text("progress"),
   error: text("error"),
 });

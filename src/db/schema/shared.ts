@@ -4,6 +4,7 @@ import {
   jsonb,
   numeric,
   pgTable,
+  primaryKey,
   text,
   timestamp,
 } from "drizzle-orm/pg-core";
@@ -87,3 +88,21 @@ export const keywordVolumes = pgTable("keyword_volumes", {
   monthlyVolume: integer("monthly_volume"),
   fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/**
+ * Which posts one run returned, so a reused run can hand back exactly the rows
+ * it produced instead of guessing from the shared post table.
+ */
+export const searchRunPosts = pgTable(
+  "search_run_posts",
+  {
+    searchRunId: text("search_run_id")
+      .notNull()
+      .references(() => searchRuns.id, { onDelete: "cascade" }),
+    postId: text("post_id")
+      .notNull()
+      .references(() => redditPosts.id, { onDelete: "cascade" }),
+    position: integer("position").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.searchRunId, t.postId] })],
+);
