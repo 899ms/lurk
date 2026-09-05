@@ -1,0 +1,65 @@
+/*
+ * Marketing art tokens. Colour for the gradient art lives here, never in a
+ * component. Four fixed directions from the design system: Leads violet to
+ * rust, Reddit SEO rust, Insights mauve, Data usage teal.
+ */
+
+.art-card {
+  --art-ink: oklch(0.99 0 0);
+  --art-ink-muted: oklch(0.99 0 0 / 0.74);
+  --art-chip: oklch(1 0 0 / 0.16);
+  --art-scrim: oklch(0.12 0 0 / 0.45);
+  color: var(--art-ink);
+  background-color: oklch(0.2 0.02 300);
+}
+
+.art-ink {
+  color: var(--art-ink);
+}
+
+.art-ink-muted {
+  color: var(--art-ink-muted);
+}
+
+.art-chip {
+  background-color: var(--art-chip);
+  color: var(--art-ink);
+}
+
+/* A scrim under the copy so text on art is always readable. */
+.art-scrim {
+  background-image: linear-gradient(
+    to top,
+    var(--art-scrim) 0%,
+    oklch(0.12 0 0 / 0.18) 45%,
+    transparent 100%
+  );
+}
+
+.art-leads {
+  background-image:
+    radial-gradient(110% 130% at 12% 8%, oklch(0.5 0.19 300) 0%, transparent 58%),
+    radial-gradient(110% 120% at 92% 95%, oklch(0.58 0.16 45) 0%, transparent 62%),
+    linear-gradient(140deg, oklch(0.26 0.08 300), oklch(0.22 0.05 40));
+}
+
+.art-seo {
+  background-image:
+    radial-gradient(100% 130% at 85% 10%, oklch(0.62 0.16 50) 0%, transparent 60%),
+    radial-gradient(120% 120% at 5% 95%, oklch(0.38 0.11 30) 0%, transparent 65%),
+    linear-gradient(150deg, oklch(0.3 0.09 40), oklch(0.2 0.05 30));
+}
+
+.art-insights {
+  background-image:
+    radial-gradient(110% 130% at 20% 15%, oklch(0.55 0.12 340) 0%, transparent 60%),
+    radial-gradient(110% 110% at 95% 90%, oklch(0.42 0.09 320) 0%, transparent 62%),
+    linear-gradient(135deg, oklch(0.3 0.07 340), oklch(0.22 0.04 320));
+}
+
+.art-usage {
+  background-image:
+    radial-gradient(110% 130% at 15% 10%, oklch(0.55 0.12 195) 0%, transparent 58%),
+    radial-gradient(110% 120% at 92% 92%, oklch(0.42 0.09 210) 0%, transparent 62%),
+    linear-gradient(145deg, oklch(0.28 0.06 195), oklch(0.2 0.04 215));
+}
