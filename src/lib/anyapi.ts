@@ -9,7 +9,32 @@ import { refreshTokens } from "./oauth";
 /** Who pays for a call: the operator's house key, or one user's AnyAPI wallet. */
 export type Funding = "house" | `wallet:${string}`;
 
-export type FundedClient = { client: AnyAPI; funding: Funding };
+/**
+ * The gateway returns its request id on the `x-anyapi-request-id` response
+ * header only; the SDK's run envelope carries no such field. Wrapping fetch is
+ * the one seam that sees the header, so the ledger can name the request.
+ */
+export type FundedClient = {
+  client: AnyAPI;
+  funding: Funding;
+  lastRequestId: () => string | null;
+};
+
+const REQUEST_ID_HEADER = "x-anyapi-request-id";
+
+function clientCapturingRequestId(apiKey: string, baseUrl: string) {
+  let lastRequestId: string | null = null;
+  const client = new AnyAPI({
+    apiKey,
+    baseUrl,
+    fetch: async (input, init) => {
+      const response = await fetch(input, init);
+      lastRequestId = response.headers.get(REQUEST_ID_HEADER) ?? lastRequestId;
+      return response;
+    },
+  });
+  return { client, lastRequestId: () => lastRequestId };
+}
 
 const EXPIRY_SKEW_MS = 60_000;
 
@@ -76,7 +101,7 @@ export async function clientForUser(userId: string): Promise<FundedClient> {
   const walletToken = await walletAccessToken(userId);
   if (walletToken) {
     return {
-      client: new AnyAPI({ apiKey: walletToken, baseUrl: ANYAPI_BASE_URL }),
+      ...clientCapturingRequestId(walletToken, ANYAPI_BASE_URL),
       funding: `wallet:${userId}`,
     };
   }
@@ -84,7 +109,7 @@ export async function clientForUser(userId: string): Promise<FundedClient> {
     throw new Error("No wallet connected and ANYAPI_HOUSE_API_KEY is not set");
   }
   return {
-    client: new AnyAPI({ apiKey: ANYAPI_HOUSE_API_KEY, baseUrl: ANYAPI_BASE_URL }),
+    ...clientCapturingRequestId(ANYAPI_HOUSE_API_KEY, ANYAPI_BASE_URL),
     funding: "house",
   };
 }
