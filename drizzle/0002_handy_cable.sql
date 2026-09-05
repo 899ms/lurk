@@ -1,0 +1,2 @@
+CREATE UNIQUE INDEX "leads_project_post_idx" ON "leads" USING btree ("project_id","post_id") WHERE "leads"."comment_id" is null;--> statement-breakpoint
+CREATE UNIQUE INDEX "leads_project_comment_idx" ON "leads" USING btree ("project_id","comment_id") WHERE "leads"."comment_id" is not null;

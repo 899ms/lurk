@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { sql } from "drizzle-orm";
 import {
   boolean,
   index,
@@ -115,7 +116,15 @@ export const leads = pgTable(
     notFitReason: text("not_fit_reason"),
     scoredAt: timestamp("scored_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("leads_project_score_idx").on(t.projectId, t.score.desc())],
+  (t) => [
+    index("leads_project_score_idx").on(t.projectId, t.score.desc()),
+    uniqueIndex("leads_project_post_idx")
+      .on(t.projectId, t.postId)
+      .where(sql`${t.commentId} is null`),
+    uniqueIndex("leads_project_comment_idx")
+      .on(t.projectId, t.commentId)
+      .where(sql`${t.commentId} is not null`),
+  ],
 );
 
 export const drafts = pgTable("drafts", {
