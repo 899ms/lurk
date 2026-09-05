@@ -1,0 +1,12 @@
+.git
+.github
+node_modules
+.next
+.env
+.env.*
+*.log
+*.tsbuildinfo
+README.md
+AGENTS.md
+CLAUDE.md
+docker-compose.yml
