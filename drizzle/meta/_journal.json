@@ -31,10 +31,10 @@
       "breakpoints": true
     },
     {
-      "idx": 4,
+      "idx": 5,
       "version": "7",
       "when": 1788700000000,
-      "tag": "0004_competitor_mentions",
+      "tag": "0005_competitor_mentions",
       "breakpoints": true
     },
     {
