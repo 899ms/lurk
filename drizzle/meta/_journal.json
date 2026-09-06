@@ -33,15 +33,8 @@
     {
       "idx": 4,
       "version": "7",
-      "when": 1788660000000,
-      "tag": "0004_api_request_counts",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "7",
-      "when": 1788700000000,
-      "tag": "0005_competitor_mentions",
+      "when": 1788659066378,
+      "tag": "0004_sudden_kitty_pryde",
       "breakpoints": true
     }
   ]

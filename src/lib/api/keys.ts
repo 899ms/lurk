@@ -2,7 +2,6 @@ import { createHash, randomBytes } from "node:crypto";
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { apiKeys } from "@/db/schema";
-import { apiKeyNames } from "@/db/schema/api";
 
 /** Every key starts with this, so one is recognizable in a log or a paste. */
 export const KEY_PREFIX = "rl_sk_";
@@ -42,13 +41,12 @@ export async function createApiKey(
   const key = generateApiKey();
   const rows = await db()
     .insert(apiKeys)
-    .values({ userId, hash: hashApiKey(key), prefix: displayPrefix(key), scopes: ["read"] })
+    .values({ userId, name, hash: hashApiKey(key), prefix: displayPrefix(key), scopes: ["read"] })
     .returning({ id: apiKeys.id });
   const id = rows[0]?.id;
   if (!id) {
     throw new Error("Could not store the new API key");
   }
-  await db().insert(apiKeyNames).values({ keyId: id, name });
   return { key, id };
 }
 
@@ -56,21 +54,16 @@ export async function listApiKeys(userId: string): Promise<ListedApiKey[]> {
   const rows = await db()
     .select({
       id: apiKeys.id,
-      name: apiKeyNames.name,
+      name: apiKeys.name,
       prefix: apiKeys.prefix,
       scopes: apiKeys.scopes,
       createdAt: apiKeys.createdAt,
       lastUsedAt: apiKeys.lastUsedAt,
     })
     .from(apiKeys)
-    .leftJoin(apiKeyNames, eq(apiKeyNames.keyId, apiKeys.id))
     .where(eq(apiKeys.userId, userId))
     .orderBy(desc(apiKeys.createdAt));
-  return rows.map((row) => ({
-    ...row,
-    name: row.name ?? "Unnamed key",
-    scopes: row.scopes ?? [],
-  }));
+  return rows.map((row) => ({ ...row, scopes: row.scopes ?? [] }));
 }
 
 export async function revokeApiKey(userId: string, keyId: string): Promise<void> {

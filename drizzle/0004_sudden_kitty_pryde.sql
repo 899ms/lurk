@@ -1,3 +1,10 @@
+CREATE TABLE "api_request_counts" (
+	"key_id" text NOT NULL,
+	"day" date NOT NULL,
+	"count" integer DEFAULT 0 NOT NULL,
+	CONSTRAINT "api_request_counts_key_id_day_pk" PRIMARY KEY("key_id","day")
+);
+--> statement-breakpoint
 CREATE TABLE "competitor_mentions" (
 	"id" text PRIMARY KEY NOT NULL,
 	"project_id" text NOT NULL,
@@ -8,6 +15,8 @@ CREATE TABLE "competitor_mentions" (
 	"found_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+ALTER TABLE "api_keys" ADD COLUMN "name" text NOT NULL;--> statement-breakpoint
+ALTER TABLE "api_request_counts" ADD CONSTRAINT "api_request_counts_key_id_api_keys_id_fk" FOREIGN KEY ("key_id") REFERENCES "public"."api_keys"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "competitor_mentions" ADD CONSTRAINT "competitor_mentions_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "competitor_mentions" ADD CONSTRAINT "competitor_mentions_post_id_reddit_posts_id_fk" FOREIGN KEY ("post_id") REFERENCES "public"."reddit_posts"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "competitor_mentions_project_found_at_idx" ON "competitor_mentions" USING btree ("project_id","found_at");--> statement-breakpoint
