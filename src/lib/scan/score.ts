@@ -1,6 +1,6 @@
 import { generateStructured } from "@/lib/llm";
 import { JUDGEMENT_SYSTEM, TRIAGE_SYSTEM } from "@/lib/prompts";
-import { SCORE_BATCH_SIZE } from "./constants";
+import { SCORE_BATCH_SIZE, TRIAGE_BATCH_SIZE } from "./constants";
 import { describeCandidate, describeItem } from "./evidence";
 import { judge } from "./gates";
 import {
@@ -29,19 +29,11 @@ function unevaluated(id: string): TriageItem {
   };
 }
 
-/**
- * One call over every new title. Costs no Reddit data, and decides which posts
- * are worth buying in full. The list comes back in the order the caller should
- * spend its reading budget: the model's ranking inside each priority tier.
- */
-export async function triageTitles(
+async function triageBatch(
   projectId: string,
   product: ProfileText,
   candidates: TriageCandidate[],
 ): Promise<TriageItem[]> {
-  if (candidates.length === 0) {
-    return [];
-  }
   const result = await generateStructured({
     purpose: "triage",
     projectId,
@@ -60,6 +52,27 @@ export async function triageTitles(
     candidates.map((candidate) => candidate.id),
   );
   return [...items, ...missing.map(unevaluated)];
+}
+
+/**
+ * Reads every new title in batches. Costs no Reddit data, and decides which
+ * posts are worth buying in full. The list comes back in the order the caller
+ * should spend its reading budget: readOrder groups by priority tier first, so
+ * concatenating the batches keeps the model's ranking inside a tier and orders
+ * equal-priority titles by the batch they were read in.
+ */
+export async function triageTitles(
+  projectId: string,
+  product: ProfileText,
+  candidates: TriageCandidate[],
+): Promise<TriageItem[]> {
+  const out: TriageItem[] = [];
+  for (let start = 0; start < candidates.length; start += TRIAGE_BATCH_SIZE) {
+    out.push(
+      ...(await triageBatch(projectId, product, candidates.slice(start, start + TRIAGE_BATCH_SIZE))),
+    );
+  }
+  return out;
 }
 
 /**

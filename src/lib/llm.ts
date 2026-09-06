@@ -4,6 +4,7 @@ import { gte, sql } from "drizzle-orm";
 import type { z } from "zod";
 import { db } from "@/db";
 import { llmUsage } from "@/db/schema";
+import { HEARTBEAT_MS } from "@/jobs/lease";
 import { config } from "./config";
 
 /**
@@ -20,6 +21,43 @@ export class LlmCapReachedError extends Error {
       `Today's language model budget of $${capUsd.toFixed(2)} is used up. Scans resume tomorrow.`,
     );
     this.name = "LlmCapReachedError";
+  }
+}
+
+/**
+ * How long one model call may take. A job's lease lives for LEASE_MS and is
+ * re-stamped every HEARTBEAT_MS, so a call that is still silent after one whole
+ * heartbeat period is hung: cutting it there ends the job well inside its own
+ * lease, and the runner's retry path runs the scan again on its cadence.
+ */
+export const LLM_CALL_TIMEOUT_MS = HEARTBEAT_MS;
+
+/** Raised when a single model call ran out of time and was cut off. */
+export class LlmTimeoutError extends Error {
+  constructor(timeoutMs: number) {
+    super(
+      `The language model did not answer within ${Math.round(timeoutMs / 60000)} minutes. The scan stopped and will run again.`,
+    );
+    this.name = "LlmTimeoutError";
+  }
+}
+
+/**
+ * Runs one model call under a deadline. Without this a hung provider holds a
+ * job open forever, which is what stalled a scan on 2026-09-06.
+ */
+export async function withCallTimeout<T>(
+  run: (signal: AbortSignal) => Promise<T>,
+  timeoutMs: number = LLM_CALL_TIMEOUT_MS,
+): Promise<T> {
+  const signal = AbortSignal.timeout(timeoutMs);
+  try {
+    return await run(signal);
+  } catch (error) {
+    if (signal.aborted) {
+      throw new LlmTimeoutError(timeoutMs);
+    }
+    throw error;
   }
 }
 
@@ -76,12 +114,15 @@ export async function generateStructured<T>(call: LlmCall<T>): Promise<T> {
   }
   await assertUnderCap();
   const openrouter = createOpenRouter({ apiKey: OPENROUTER_API_KEY });
-  const result = await generateObject({
-    model: openrouter.chat(OPENROUTER_MODEL),
-    schema: call.schema,
-    system: call.system,
-    prompt: call.prompt,
-  });
+  const result = await withCallTimeout((abortSignal) =>
+    generateObject({
+      model: openrouter.chat(OPENROUTER_MODEL),
+      schema: call.schema,
+      system: call.system,
+      prompt: call.prompt,
+      abortSignal,
+    }),
+  );
   const inputTokens = result.usage.inputTokens ?? 0;
   const outputTokens = result.usage.outputTokens ?? 0;
   await db()

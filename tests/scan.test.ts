@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { JUDGEMENT_SYSTEM } from "@/lib/prompts";
 import {
   MAX_POST_READS_FREE,
+  TRIAGE_BATCH_SIZE,
   engagementScore,
   foldScore,
   postReadCap,
@@ -193,6 +194,51 @@ describe("triage", () => {
     expect(triage.map((one) => one.id)).toEqual(["c", "b", "a"]);
     expect(triage[2].disposition).toBe("uncertain");
     expect(readOrder(triage)).toEqual(["b", "c", "a"]);
+  });
+
+  it("reads more titles than one batch holds, keeping every id and the ranking", async () => {
+    const many = Array.from({ length: TRIAGE_BATCH_SIZE + 5 }, (_, index) => ({
+      id: `p${index}`,
+      title: `Title ${index}`,
+      subreddit: "SaaS",
+      author: null,
+      score: null,
+      ageHours: 1,
+    }));
+    const verdict = (id: string, priority: "high" | "low") => ({
+      id,
+      disposition: "read" as const,
+      priority,
+      reasonCode: "relevant_pain" as const,
+      reason: id,
+    });
+    const last = `p${TRIAGE_BATCH_SIZE - 1}`;
+    const first = `p${TRIAGE_BATCH_SIZE}`;
+    generateStructured.mockReset();
+    generateStructured.mockResolvedValueOnce({
+      items: many
+        .slice(0, TRIAGE_BATCH_SIZE)
+        .map((one) => verdict(one.id, one.id === last ? "high" : "low")),
+    });
+    generateStructured.mockResolvedValueOnce({
+      items: many
+        .slice(TRIAGE_BATCH_SIZE)
+        .map((one) => verdict(one.id, one.id === first ? "high" : "low")),
+    });
+
+    const triage = await triageTitles("project-1", "A form builder", many);
+
+    expect(generateStructured).toHaveBeenCalledTimes(2);
+    expect(generateStructured.mock.calls[0][0].prompt).toContain("Title 0");
+    expect(generateStructured.mock.calls[0][0].prompt).not.toContain(`Title ${TRIAGE_BATCH_SIZE}`);
+    expect(triage).toHaveLength(many.length);
+    expect(new Set(triage.map((one) => one.id)).size).toBe(many.length);
+    expect(triage.every((one) => one.disposition === "read")).toBe(true);
+    const order = readOrder(triage);
+    expect(order.slice(0, 2)).toEqual([last, first]);
+    expect(order.slice(2)).toEqual(
+      many.map((one) => one.id).filter((id) => id !== last && id !== first),
+    );
   });
 
   it("reads the uncertain, never the rejected", () => {

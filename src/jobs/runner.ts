@@ -2,16 +2,8 @@ import { and, asc, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { jobs } from "@/db/schema";
 import { enqueueOnce } from "./enqueue";
+import { HEARTBEAT_MS, LEASE_MS } from "./lease";
 import { handlerFor, nextRunAt, type Job } from "./registry";
-
-/**
- * How long a claimed job may run before another worker may take it back. The
- * longest run measured on 2026-09-05 was a scan of about four minutes, so
- * fifteen minutes is that worst case with more than three times the margin: a
- * live job is never stolen, and a job whose process died is picked up again
- * within a quarter of an hour instead of blocking its project forever.
- */
-export const LEASE_MS = 15 * 60 * 1000;
 
 /** No other unfinished job of this project may hold a live lease. */
 function noSiblingRunning(leaseCutoff: Date) {
@@ -62,8 +54,60 @@ function reasonFor(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-async function finish(job: Job, error: string | null): Promise<void> {
-  await db().update(jobs).set({ finishedAt: new Date(), error }).where(eq(jobs.id, job.id));
+/**
+ * The lease this worker holds, which is the started_at stamp it last wrote.
+ * Every write conditions on that stamp, so a worker whose lease was taken back
+ * writes nothing: the reclaiming worker's own stamp no longer matches.
+ */
+type Lease = { stamp: Date | null };
+
+function heldBy(job: Job, lease: Lease) {
+  return and(
+    eq(jobs.id, job.id),
+    lease.stamp ? eq(jobs.startedAt, lease.stamp) : isNull(jobs.startedAt),
+  );
+}
+
+/** Re-stamps the lease. False means another worker already took the job. */
+async function renewLease(job: Job, lease: Lease, now = new Date()): Promise<boolean> {
+  const renewed = await db()
+    .update(jobs)
+    .set({ startedAt: now })
+    .where(heldBy(job, lease))
+    .returning({ id: jobs.id });
+  if (renewed.length === 0) {
+    return false;
+  }
+  lease.stamp = now;
+  return true;
+}
+
+/**
+ * Keeps a running job's lease alive until it is stopped. A timer that stops
+ * with the process is exactly the signal the queue wants: silence means the
+ * worker is gone, and the job is claimable again after LEASE_MS.
+ */
+function startHeartbeat(job: Job): { lease: Lease; stop: () => void } {
+  const lease: Lease = { stamp: job.startedAt };
+  const timer = setInterval(() => {
+    void renewLease(job, lease).then((held) => {
+      if (!held) {
+        clearInterval(timer);
+      }
+    });
+  }, HEARTBEAT_MS);
+  timer.unref?.();
+  return { lease, stop: () => clearInterval(timer) };
+}
+
+/** Writes the end of the job, unless this worker no longer holds its lease. */
+async function finish(job: Job, lease: Lease, error: string | null): Promise<boolean> {
+  const written = await db()
+    .update(jobs)
+    .set({ finishedAt: new Date(), error })
+    .where(heldBy(job, lease))
+    .returning({ id: jobs.id });
+  return written.length > 0;
 }
 
 /**
@@ -78,18 +122,27 @@ async function requeueRecurring(job: Job): Promise<void> {
   }
 }
 
-/** Runs one already claimed job to its end, failure included. */
+/**
+ * Runs one already claimed job to its end, failure included, holding its lease
+ * open for as long as the handler runs. A job that lost its lease while it ran
+ * writes no result and queues no successor: the worker that took it over owns
+ * both, so one long scan can never be finished twice.
+ */
 export async function runClaimedJob(job: Job): Promise<void> {
+  const { lease, stop } = startHeartbeat(job);
   try {
     const handler = handlerFor(job.kind);
     if (!handler) {
       throw new Error(`No handler registered for job kind ${job.kind}`);
     }
     await handler(job);
-    await finish(job, null);
+    await finish(job, lease, null);
   } catch (error) {
-    await finish(job, reasonFor(error));
-    await requeueRecurring(job);
+    if (await finish(job, lease, reasonFor(error))) {
+      await requeueRecurring(job);
+    }
+  } finally {
+    stop();
   }
 }
 

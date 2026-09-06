@@ -20,6 +20,16 @@ export const DEFAULT_SCORE_THRESHOLD = 50;
 /** How many items one scoring call judges at a time. */
 export const SCORE_BATCH_SIZE = 10;
 
+/**
+ * How many titles one triage call reads at a time. The saved runs in
+ * .context/reddit-leads-proof/scorer-pass.md and scorer-pass-2.md triaged 70,
+ * 77 and 78 titles in a single call and each came back complete, so 70 is the
+ * largest batch measurement supports rather than a guess. Sending every title
+ * of a large project in one call is what left a scan of 188 titles stalled on
+ * 2026-09-06.
+ */
+export const TRIAGE_BATCH_SIZE = 70;
+
 /** A thread with fewer replies than this is not worth buying its comments. */
 export const MIN_COMMENTS_FOR_THREAD = 3;
 

@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { captureRequestId, withRequestId } from "@/lib/anyapi";
+import { HEARTBEAT_MS, LEASE_MS } from "@/jobs/lease";
+import { LlmTimeoutError, LLM_CALL_TIMEOUT_MS, withCallTimeout } from "@/lib/llm";
 
 describe("request identity", () => {
   it("gives each call its own request id and never the previous one", async () => {
@@ -30,6 +32,29 @@ describe("request identity", () => {
 
     expect(fast.requestId).toBe("fast");
     expect((await slow).requestId).toBe("slow");
+  });
+});
+
+describe("the model call deadline", () => {
+  it("cuts a call off well inside the lease it must not outlive", () => {
+    expect(LLM_CALL_TIMEOUT_MS).toBe(HEARTBEAT_MS);
+    expect(LLM_CALL_TIMEOUT_MS).toBeLessThan(LEASE_MS);
+  });
+
+  it("turns a call that never answers into a plain failure", async () => {
+    const hang = (signal: AbortSignal) =>
+      new Promise<never>((_, reject) => {
+        signal.addEventListener("abort", () => reject(signal.reason));
+      });
+
+    await expect(withCallTimeout(hang, 5)).rejects.toThrow(/did not answer within/);
+    expect(new LlmTimeoutError(LLM_CALL_TIMEOUT_MS).message).toBe(
+      "The language model did not answer within 3 minutes. The scan stopped and will run again.",
+    );
+  });
+
+  it("lets a call that answers in time through untouched", async () => {
+    await expect(withCallTimeout(async () => "answer", 1000)).resolves.toBe("answer");
   });
 });
 
@@ -107,9 +132,85 @@ describe.skipIf(!process.env.DATABASE_URL)("the job queue against a database", (
     await db().delete(users).where(eq(users.id, user.id));
   });
 
+  it("keeps advancing the lease of a job that is still running", async () => {
+    const { db, jobs, users, user, project } = await fixture();
+    const { JOB_HANDLERS } = await import("@/jobs/registry");
+    const { runClaimedJob } = await import("@/jobs/runner");
+    const { eq } = await import("drizzle-orm");
+
+    const stamp = new Date();
+    const [claimed] = await db()
+      .insert(jobs)
+      .values({ kind: "noop", projectId: project.id, runAt: LONG_AGO, startedAt: stamp })
+      .returning();
+    const original = JOB_HANDLERS.noop;
+    let advanced: Date | null = null;
+    vi.useFakeTimers({ toFake: ["setInterval"] });
+    JOB_HANDLERS.noop = async () => {
+      await vi.advanceTimersByTimeAsync(HEARTBEAT_MS);
+      for (let attempt = 0; attempt < 100 && !advanced; attempt += 1) {
+        const [row] = await db().select().from(jobs).where(eq(jobs.id, claimed.id));
+        if (row.startedAt && row.startedAt.getTime() > stamp.getTime()) {
+          advanced = row.startedAt;
+        } else {
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+      }
+    };
+    try {
+      await runClaimedJob(claimed);
+    } finally {
+      JOB_HANDLERS.noop = original;
+      vi.useRealTimers();
+    }
+
+    expect(advanced).not.toBeNull();
+    const [finished] = await db().select().from(jobs).where(eq(jobs.id, claimed.id));
+    expect(finished.finishedAt).not.toBeNull();
+    expect(finished.error).toBeNull();
+
+    await db().delete(users).where(eq(users.id, user.id));
+  });
+
+  it("writes nothing once another worker has taken the job away", async () => {
+    const { db, jobs, users, user, project } = await fixture();
+    const { JOB_HANDLERS } = await import("@/jobs/registry");
+    const { runClaimedJob } = await import("@/jobs/runner");
+    const { and, eq, isNull } = await import("drizzle-orm");
+
+    const [claimed] = await db()
+      .insert(jobs)
+      .values({ kind: "scan", projectId: project.id, runAt: LONG_AGO, startedAt: new Date() })
+      .returning();
+    const original = JOB_HANDLERS.scan;
+    JOB_HANDLERS.scan = async () => {
+      await db()
+        .update(jobs)
+        .set({ startedAt: new Date(Date.now() + 1000) })
+        .where(eq(jobs.id, claimed.id));
+      throw new Error("Reddit returned 502");
+    };
+    try {
+      await runClaimedJob(claimed);
+    } finally {
+      JOB_HANDLERS.scan = original;
+    }
+
+    const [row] = await db().select().from(jobs).where(eq(jobs.id, claimed.id));
+    expect(row.finishedAt).toBeNull();
+    expect(row.error).toBeNull();
+    const pending = await db()
+      .select()
+      .from(jobs)
+      .where(and(eq(jobs.kind, "scan"), eq(jobs.projectId, project.id), isNull(jobs.startedAt)));
+    expect(pending).toHaveLength(0);
+
+    await db().delete(users).where(eq(users.id, user.id));
+  });
+
   it("reclaims a job whose lease expired and leaves a live one alone", async () => {
     const { db, jobs, users, user, project } = await fixture();
-    const { claimNextJob, LEASE_MS } = await import("@/jobs/runner");
+    const { claimNextJob } = await import("@/jobs/runner");
     const { eq } = await import("drizzle-orm");
 
     const [live] = await db()
