@@ -128,8 +128,9 @@
   .hero-eyebrow { font-size: 11px; }
   .marketing-button { padding: 10px 14px; font-size: 12px; }
   .marketing-showcase [role="tab"] { padding-inline: 12px; }
-  .hero-product, .marketing-b .hero-product { width: 580px; max-width: none; transform: none; }
+  .hero-product, .marketing-b .hero-product, .marketing-c .hero-product { width: 100%; max-width: none; transform: none; }
+  .hero-product .product-mat { width: 580px; align-self: flex-start; }
   .marketing-hero { height: 760px; }
-  .marketing-c .hero-product { transform: translateX(-70px); }
+  .marketing-c .product-mat { transform: translateX(-70px); }
 }
 @media (prefers-reduced-motion: reduce) { .marketing a, .marketing button { transition: none; } }
