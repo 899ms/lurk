@@ -1,4 +1,4 @@
-import { writeProgress } from "@/jobs/enqueue";
+import { enqueueJob, writeProgress } from "@/jobs/enqueue";
 import { clientForUser } from "@/lib/anyapi";
 import type { FetchContext } from "@/lib/reddit/fetch";
 import { fetchPost } from "@/lib/reddit/skus";
@@ -70,7 +70,8 @@ async function refreshKeyword(
  * threads Google ranks, what each thread looks like now, and whether a
  * competitor is named in it. Monthly volume is bought once for the whole list
  * and only for a connected wallet, because that endpoint costs a hundred times
- * a Reddit call.
+ * a Reddit call. A project with keywords books its next refresh on the way
+ * out, at its tier's refresh interval.
  */
 export async function runSeoRefresh(
   projectId: string,
@@ -82,6 +83,10 @@ export async function runSeoRefresh(
   }
   const { limits } = await tierForUser(project.userId);
   const settings = seoSettings(limits, project.keywords);
+  if (settings.keywords.length === 0) {
+    await writeProgress(jobId, "No keywords to look up yet");
+    return { keywords: 0, threads: 0, costUsd: 0 };
+  }
   const funded = await clientForUser(project.userId);
   const maxAgeMs = settings.refreshDays * DAY_MS;
   const ctx: FetchContext = { projectId, funded, maxAgeMs };
@@ -95,11 +100,12 @@ export async function runSeoRefresh(
     costUsd += done.costUsd;
   }
 
-  if (settings.searchVolume && settings.keywords.length > 0) {
+  if (settings.searchVolume) {
     await writeProgress(jobId, "Reading monthly search volume");
     costUsd += await fetchKeywordVolumes(ctx, settings.keywords);
   }
 
   await writeProgress(jobId, "Finished");
+  await enqueueJob("seo_refresh", projectId, new Date(Date.now() + maxAgeMs));
   return { keywords: settings.keywords.length, threads, costUsd };
 }

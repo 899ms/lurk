@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { competitorMentions } from "@/db/schema/competitors";
-import { writeProgress } from "@/jobs/enqueue";
+import { enqueueJob, writeProgress } from "@/jobs/enqueue";
 import { clientForUser } from "@/lib/anyapi";
 import type { FetchContext } from "@/lib/reddit/fetch";
 import { fetchPost, fetchSearch } from "@/lib/reddit/skus";
@@ -113,7 +113,9 @@ async function scanOne(
 
 /**
  * One pass over the competitors a project watches: this week's newest Reddit
- * posts naming each, read in full, then judged in one call per competitor.
+ * posts naming each, read in full, then judged in one call per competitor. A
+ * project with competitors books its next pass on the way out, at its tier's
+ * scan interval.
  */
 export async function runCompetitorScan(
   projectId: string,
@@ -147,5 +149,10 @@ export async function runCompetitorScan(
     outcome.costUsd += one.costUsd;
   }
   await writeProgress(jobId, "Finished");
+  await enqueueJob(
+    "competitor_scan",
+    projectId,
+    new Date(Date.now() + scanIntervalHours(limits) * HOUR_MS),
+  );
   return outcome;
 }
