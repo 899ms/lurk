@@ -21,7 +21,7 @@ type SeoPageProps = {
 };
 
 const EMPTY_SENTENCE =
-  "A refresh asks Google which Reddit threads rank for each of your keywords, then opens every thread for its score, replies and age. At catalog prices that is about $0.001 per keyword.";
+  "A refresh asks Google which Reddit threads rank for each of your keywords, then opens every thread for its score, replies and age. At catalog prices the search is about $0.001 per keyword, and each thread it opens is about $0.001 more.";
 
 function toThread(row: SeoRow): RankingThread {
   return {
