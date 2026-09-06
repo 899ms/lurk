@@ -30,7 +30,7 @@ describe.skipIf(!process.env.DATABASE_URL)("fetchShared against a database", () 
     process.env.APP_ENCRYPTION_KEY ??= Buffer.alloc(32).toString("base64");
     const { db } = await import("@/db");
     const { projects, redditPosts, searchRuns, usageLedger, users } = await import("@/db/schema");
-    const { fetchSearch } = await import("@/lib/reddit/fetch");
+    const { fetchSearch } = await import("@/lib/reddit/skus");
     const { and, eq } = await import("drizzle-orm");
 
     const [user] = await db()
