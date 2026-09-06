@@ -283,6 +283,15 @@ commit, and then polls `APP_HEALTH_URL` until it answers 200. Migrations are not
 job: `docker-entrypoint.sh` applies them before the server starts, and one replica means
 they run once.
 
+Until the repository exists, `scripts/deploy-manual.sh` does the same from a clean checkout:
+
+```bash
+RESOURCE_GROUP=reddit-leads-prod scripts/deploy-manual.sh
+```
+
+It pins `--platform linux/amd64`, because an image built on an Apple Silicon Mac without it
+pushes fine and then fails to pull with "not found".
+
 ## Development
 
 ```bash
