@@ -109,7 +109,7 @@ describe.skipIf(!hasDatabase)("runScan against a database", () => {
     return row;
   }
 
-  async function posts(count: number) {
+  async function posts(count: number, patch: { body?: string; author?: string } = {}) {
     const now = Math.floor(Date.now() / 1000);
     return upsertPosts(
       Array.from({ length: count }, (_, index) => ({
@@ -122,6 +122,7 @@ describe.skipIf(!hasDatabase)("runScan against a database", () => {
         score: 3,
         numComments: 2,
         createdUtc: now - 3600,
+        ...patch,
       })),
     );
   }
@@ -178,6 +179,24 @@ describe.skipIf(!hasDatabase)("runScan against a database", () => {
     generateStructured.mockClear();
     await runScan(row.id, randomUUID());
     expect(generateStructured).not.toHaveBeenCalled();
+  });
+
+  it("never triages, judges or stores a post Reddit has taken away", async () => {
+    const row = await project();
+    const [live] = await posts(1);
+    const [gone] = await posts(1, { body: "[removed]" });
+    const [ghost] = await posts(1, { author: "[deleted]" });
+    fetchSearch.mockResolvedValue({ value: [live, gone, ghost], reused: true, costUsd: 0 });
+    fetchPost.mockResolvedValue({ value: [live], reused: true, costUsd: 0 });
+    model([live.id], (id) => assessment(id));
+
+    const outcome = await runScan(row.id, randomUUID());
+    const prompts: string[] = generateStructured.mock.calls.map((call) => call[0].prompt);
+    expect(prompts).not.toHaveLength(0);
+    expect(prompts.some((prompt: string) => prompt.includes(gone.id))).toBe(false);
+    expect(prompts.some((prompt: string) => prompt.includes(ghost.id))).toBe(false);
+    expect(outcome.candidates).toBe(1);
+    expect((await evaluations(row.id)).map((one) => one.postId)).toEqual([live.id]);
   });
 
   it("dates a held candidate with a real Date, not the raw column text", async () => {

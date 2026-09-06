@@ -1,7 +1,7 @@
 import { generateStructured } from "@/lib/llm";
 import { JUDGEMENT_SYSTEM, TRIAGE_SYSTEM } from "@/lib/prompts";
 import { SCORE_BATCH_SIZE, TRIAGE_BATCH_SIZE } from "./constants";
-import { describeCandidate, describeItem } from "./evidence";
+import { describeCandidate, describeItem, isSentinel } from "./evidence";
 import { judge } from "./gates";
 import {
   judgementSchema,
@@ -130,20 +130,22 @@ async function judgeBatch(
  * Judges items in batches. Every answer is checked against the batch it came
  * from and against the text it was shown: a foreign id is dropped, an id the
  * model skipped is asked for once more and otherwise left unevaluated, and a
- * quote that is not in the supplied text sends the item to review.
+ * quote that is not in the supplied text sends the item to review. An item
+ * Reddit has taken away is never sent at all, and so never judged.
  */
 export async function judgeItems(
   projectId: string,
   product: ProfileText,
   items: ScorableItem[],
 ): Promise<Judgement[]> {
+  const live = items.filter((item) => !isSentinel(item));
   const out: Judgement[] = [];
-  for (let start = 0; start < items.length; start += SCORE_BATCH_SIZE) {
-    const batch = items.slice(start, start + SCORE_BATCH_SIZE);
+  for (let start = 0; start < live.length; start += SCORE_BATCH_SIZE) {
+    const batch = live.slice(start, start + SCORE_BATCH_SIZE);
     const bySource = new Map(batch.map((item) => [item.id, item]));
     for (const assessment of await judgeBatch(projectId, product, batch)) {
       const source = bySource.get(assessment.id) as ScorableItem;
-      out.push(withCheckedEvidence(judge(assessment, source), describeItem(source)));
+      out.push(withCheckedEvidence(judge(assessment, source), source));
     }
   }
   return out;

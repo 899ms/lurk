@@ -65,6 +65,17 @@ function withCode(codes: ReasonCode[], code: ReasonCode): ReasonCode[] {
 }
 
 /**
+ * True when the model could not say anything at all about this person: not who
+ * they are, not whether they need something, not whether the product does the
+ * job. Review is for a plausible buyer with a material unknown, so an item with
+ * no reading behind it is a rejection and never something to put in front of a
+ * person. A buyer, an open or evaluating need, or any fit at all is a reading.
+ */
+function nothingAssessed(item: Assessment): boolean {
+  return item.relationship === "unknown" && item.needState === "unknown" && item.fit === null;
+}
+
+/**
  * The decision the scan acts on. The model may reject or send to review on its
  * own reading; only the gates may let something qualify.
  */
@@ -73,7 +84,8 @@ export function decide(item: Assessment): { decision: Decision; reasonCodes: Rea
   if (!failure) {
     return { decision: item.decision, reasonCodes: item.reasonCodes };
   }
-  const decision: Decision = REJECTING.includes(failure) ? "reject" : "review";
+  const decision: Decision =
+    REJECTING.includes(failure) || nothingAssessed(item) ? "reject" : "review";
   return { decision, reasonCodes: withCode(item.reasonCodes, failure) };
 }
 

@@ -7,7 +7,7 @@ import {
   foldScore,
   postReadCap,
 } from "@/lib/scan/constants";
-import { BODY_CHAR_BUDGET, truncateBody } from "@/lib/scan/evidence";
+import { BODY_CHAR_BUDGET, describeItem, truncateBody } from "@/lib/scan/evidence";
 import { judge } from "@/lib/scan/gates";
 import type { Assessment, ScorableItem, TriageItem } from "@/lib/scan/judgement";
 import { retentionCutoff } from "@/lib/retention";
@@ -116,6 +116,64 @@ describe("the qualification gates", () => {
     expect(judged.decision).toBe("qualify");
     expect(judged.matchedPhrase).toBe("it has to take payments");
   });
+
+  it("rejects an item the model could read nothing at all into", () => {
+    const judged = judge(
+      assessment({
+        relationship: "unknown",
+        needState: "unknown",
+        fit: null,
+        intent: 0,
+        decision: "review",
+        reasonCodes: ["insufficient_evidence"],
+        needEvidence: null,
+      }),
+      item,
+    );
+    expect(judged.decision).toBe("reject");
+    expect(judged.reasonCodes).toContain("insufficient_evidence");
+  });
+
+  it("still holds a plausible buyer with one material unknown for review", () => {
+    for (const patch of [
+      { relationship: "buyer" as const, needState: "unknown" as const, fit: null },
+      { relationship: "unknown" as const, needState: "evaluating" as const, fit: null },
+      { relationship: "unknown" as const, needState: "unknown" as const, fit: 2 },
+    ]) {
+      const judged = judge(assessment({ ...patch, decision: "review" }), item);
+      expect(judged.decision).toBe("review");
+    }
+  });
+});
+
+describe("content Reddit has taken away", () => {
+  const deletedBody: ScorableItem = { ...item, id: "gone", body: "[deleted]" };
+  const removedBody: ScorableItem = { ...item, id: "removed", body: "  [Removed]  " };
+  const deletedAuthor: ScorableItem = { ...item, id: "ghost", author: "[deleted]" };
+
+  it("never sends a sentinel body or a deleted author to the model", async () => {
+    generateStructured.mockReset();
+    generateStructured.mockResolvedValueOnce({ items: [assessment()] });
+    const judged = await judgeItems("project-1", "A form builder", [
+      item,
+      deletedBody,
+      removedBody,
+      deletedAuthor,
+    ]);
+    expect(generateStructured).toHaveBeenCalledTimes(1);
+    const prompt = generateStructured.mock.calls[0][0].prompt;
+    for (const id of ["gone", "removed", "ghost"]) {
+      expect(prompt).not.toContain(`id: ${id}`);
+    }
+    expect(judged.map((one) => one.id)).toEqual(["p1"]);
+  });
+
+  it("makes no model call at all when every candidate is a sentinel", async () => {
+    generateStructured.mockReset();
+    const judged = await judgeItems("project-1", "A form builder", [deletedBody, deletedAuthor]);
+    expect(generateStructured).not.toHaveBeenCalled();
+    expect(judged).toEqual([]);
+  });
 });
 
 describe("judging a batch", () => {
@@ -147,6 +205,38 @@ describe("judging a batch", () => {
     generateStructured.mockResolvedValueOnce({ items: [] });
     const judged = await judgeItems("project-1", "A form builder", [item]);
     expect(judged).toEqual([]);
+  });
+
+  it("keeps a lead whose quote differs from the text only in typography", async () => {
+    const typography: ScorableItem = {
+      ...item,
+      body: "Our signup form needs\n\n  conditional logic \u2013 and it\u2019s got to take \\*payments\\*.",
+    };
+    generateStructured.mockReset();
+    generateStructured.mockResolvedValueOnce({
+      items: [
+        assessment({
+          needEvidence: { quote: "conditional logic - and it's got to take *payments*." },
+        }),
+      ],
+    });
+    const judged = await judgeItems("project-1", "A form builder", [typography]);
+    expect(judged[0].decision).toBe("qualify");
+    expect(judged[0].reasonCodes).not.toContain("insufficient_evidence");
+  });
+
+  it("keeps a lead whose quote the head-and-tail excerpt cut in half", async () => {
+    const long: ScorableItem = {
+      ...item,
+      body: `${"a".repeat(BODY_CHAR_BUDGET)} we need webhooks on every submission. ${"b".repeat(BODY_CHAR_BUDGET)}`,
+    };
+    generateStructured.mockReset();
+    generateStructured.mockResolvedValueOnce({
+      items: [assessment({ needEvidence: { quote: "we need webhooks on every submission." } })],
+    });
+    const judged = await judgeItems("project-1", "A form builder", [long]);
+    expect(describeItem(long)).not.toContain("we need webhooks on every submission.");
+    expect(judged[0].decision).toBe("qualify");
   });
 
   it("sends a judgement whose quote is not in the supplied text to review", async () => {

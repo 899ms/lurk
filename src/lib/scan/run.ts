@@ -15,6 +15,7 @@ import { scanIntervalHours, tierForUser } from "@/lib/tier";
 import { RETENTION_DAYS } from "@/lib/tiers";
 import { judgeThreads, readThreads } from "./comments";
 import { postReadCap } from "./constants";
+import { isSentinel } from "./evidence";
 import {
   alreadyJudged,
   commentDigests,
@@ -127,7 +128,11 @@ async function fetchAvatars(ctx: FetchContext, usernames: string[]): Promise<voi
   }
 }
 
-/** The posts this project has no current verdict on, given what it has read. */
+/**
+ * The posts this project has no current verdict on, given what it has read. A
+ * post Reddit has taken away is dropped here, before a title is triaged or a
+ * body is bought: there is nothing left to read and nobody left to answer.
+ */
 async function unjudged(
   project: ScanProject,
   stored: Map<string, StoredJudgement>,
@@ -136,6 +141,7 @@ async function unjudged(
   const digests = await commentDigests(posts.map((post) => post.id));
   return posts.filter(
     (post) =>
+      !isSentinel(post) &&
       !alreadyJudged(
         stored,
         leadKey(post.id, null),

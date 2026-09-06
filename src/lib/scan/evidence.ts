@@ -39,8 +39,7 @@ export function describeCandidate(candidate: TriageCandidate): string {
   ].join(" | ");
 }
 
-/** Everything the judgement prompt says it receives, for one candidate. */
-export function describeItem(item: ScorableItem): string {
+function describe(item: ScorableItem, body: string, parentBody: string | null): string {
   return [
     `id: ${item.id}`,
     `subreddit: r/${item.subreddit}`,
@@ -49,11 +48,42 @@ export function describeItem(item: ScorableItem): string {
     `upvotes: ${item.upvotes ?? 0}`,
     `comments on the thread: ${item.numComments ?? 0}`,
     `title: ${item.title}`,
-    item.parentBody === null
-      ? null
-      : `parent post the target is replying to: ${truncateBody(item.parentBody, PARENT_CHAR_BUDGET)}`,
-    `target text: ${truncateBody(item.body)}`,
+    parentBody === null ? null : `parent post the target is replying to: ${parentBody}`,
+    `target text: ${body}`,
   ]
     .filter((line): line is string => line !== null)
     .join("\n");
+}
+
+/** Everything the judgement prompt says it receives, for one candidate. */
+export function describeItem(item: ScorableItem): string {
+  return describe(
+    item,
+    truncateBody(item.body),
+    item.parentBody === null ? null : truncateBody(item.parentBody, PARENT_CHAR_BUDGET),
+  );
+}
+
+/**
+ * The same fields with nothing cut. A quote the model took from either side of
+ * an elision is still the person's own words, so the validator checks this text
+ * as well as the excerpt the model was shown.
+ */
+export function describeItemUncut(item: ScorableItem): string {
+  return describe(item, item.body, item.parentBody);
+}
+
+/** Reddit's own markers for a body or an author it has taken away. */
+const SENTINEL_BODIES = ["[deleted]", "[removed]"];
+const SENTINEL_AUTHOR = "[deleted]";
+
+/**
+ * True when Reddit has taken the content away. There is nothing here for a
+ * model to read and nothing for a person to answer, so such an item is never
+ * triaged, never judged, and never stored as a verdict about anybody.
+ */
+export function isSentinel(item: { body: string | null; author: string | null }): boolean {
+  const body = (item.body ?? "").trim().toLowerCase();
+  const author = (item.author ?? "").trim().toLowerCase();
+  return SENTINEL_BODIES.includes(body) || author === SENTINEL_AUTHOR;
 }
