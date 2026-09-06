@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUpRight, Check, ScanSearch } from "lucide-react";
+import { ArrowUpRight, Check } from "lucide-react";
 import { MarketingNav } from "./MarketingNav";
 import { MarketingFooter } from "./MarketingFooter";
 import { MarketingShowcase } from "./MarketingShowcase";
@@ -8,6 +8,7 @@ import { CtaRow } from "./CtaRow";
 import { BrandImage } from "./BrandImage";
 import type { Variant } from "./VariantSwitcher";
 import "./marketing.css";
+import "./below-fold.css";
 
 /** One feature story, with three reviewable hero compositions. */
 export function MarketingPageLayout({ variant }: { variant: Variant }) {
@@ -47,36 +48,16 @@ export function MarketingPageLayout({ variant }: { variant: Variant }) {
             </div>
           </div>
           <div className="hero-product">
-            <MarketingShowcase />
             <p className="preview-caption">Real saved Reddit examples. Preview, not a live feed.</p>
+            <MarketingShowcase />
           </div>
         </section>
       </div>
       <div className="marketing-body">
-        <section className="workflow-strip" aria-label="How it works">
-          <div>
-            <ScanSearch />
-            <span>
-              Find the ask<small>Posts and comments, not just mentions.</small>
-            </span>
-          </div>
-          <div>
-            <BrandImage name="Reddit" src="/brands/reddit.svg" size={24} />
-            <span>
-              Read the room<small>Intent, context, and the community rule.</small>
-            </span>
-          </div>
-          <a href="#features">
-            <ArrowDown />
-            <span>
-              Decide what to say<small>You copy the draft. You choose to reply.</small>
-            </span>
-          </a>
-        </section>
         <MarketingFeatures />
         <SelfHostBlock />
-        <section className="closing-cta cloud-stage">
-          <span className="eyebrow">Good conversations start with listening</span>
+        <section className="closing-cta" data-proof="closing">
+          <span className="closing-eyebrow">Good conversations start with listening</span>
           <h2>
             Find the ask.
             <br />

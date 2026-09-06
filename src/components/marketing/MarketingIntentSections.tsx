@@ -1,104 +1,102 @@
-import { Bell, Check, Mail, ShieldCheck, SlidersHorizontal, Webhook } from "lucide-react";
+import { Bell, Mail, Webhook } from "lucide-react";
 import { AuthorAvatar } from "@/components/AuthorAvatar";
-import { SubredditChip } from "@/components/SubredditChip";
 import { BrandImage } from "./BrandImage";
 import { MockLeadCard } from "./MockLeadCard";
+import { MarketingFragment } from "./MarketingFragment";
 import { DraftPreview } from "./DraftPreview";
 import { MOCK_DETAIL } from "./mockContent";
 
 export function MarketingIntentSections() {
   return (
     <>
-      <section className="feature-section" id="features">
-        <div className="section-intro">
-          <span className="eyebrow">Buyer intent, with the evidence</span>
+      <section className="floating-feature" id="score" data-proof="score">
+        <header className="narrow-heading">
           <h2>
-            Less keyword noise.
-            <br />
-            More actual questions.
+            <span>Scoring</span> you can read, not just trust.
           </h2>
           <p>
-            Start with your product URL. Edit the profile, keywords, and communities. Scheduled
-            scans read posts and comments, then score the fit.
+            A score from 0 to 100, the reason written out, and the phrase that matched. Inspect the
+            fit before you spend time on a reply.{" "}
+            <a href={MOCK_DETAIL.url} target="_blank" rel="noreferrer">
+              Read the example
+            </a>
           </p>
-        </div>
-        <div className="intent-grid">
-          <div className="detail-stage">
-            <span className="stage-label">
-              <BrandImage name="Reddit" src="/brands/reddit.svg" size={18} /> A saved lead for Tally{" "}
-              <BrandImage name="Tally" domain="tally.so" size={18} />
-            </span>
+        </header>
+        <div className="floating-stage score-stage">
+          <div className="fragment-prompt">
+            What makes this a useful lead?
+            <small>
+              Saved example for Tally <BrandImage name="Tally" domain="tally.so" size={16} />
+            </small>
+          </div>
+          <div className="floating-main">
             <MockLeadCard lead={MOCK_DETAIL} />
           </div>
-          <div className="feature-notes">
-            <div>
-              <span className="feature-symbol">0-100</span>
-              <h3>A score you can inspect</h3>
-              <p>
-                The reason is written out. The phrase that matched is highlighted. You can see why
-                the post made the feed.
-              </p>
-            </div>
-            <div>
-              <ShieldCheck />
-              <h3>The rule before the reply</h3>
-              <p>
-                The subreddit&apos;s own self-promotion policy sits on the lead. Read it before you
-                decide how to contribute.
-              </p>
-              <SubredditChip name={MOCK_DETAIL.subreddit} iconUrl={MOCK_DETAIL.subredditIcon} />
-            </div>
-            <div>
-              <SlidersHorizontal />
-              <h3>Your product, your filters</h3>
-              <p>
-                Filter by community, time window, and intent stage. Keep seller-side mentions
-                separate from people asking for help.
-              </p>
-            </div>
+        </div>
+      </section>
+      <section className="floating-feature" id="rules" data-proof="rules">
+        <header className="narrow-heading">
+          <h2>
+            <span>Community rules</span> before your first word.
+          </h2>
+          <p>
+            The subreddit&apos;s own self-promotion policy belongs next to the lead. A good match is
+            a reason to read, not permission to promote.{" "}
+            <a href="https://www.reddit.com/r/nocode/about/rules/" target="_blank" rel="noreferrer">
+              Read the rules
+            </a>
+          </p>
+        </header>
+        <div className="floating-stage rule-stage">
+          <div className="floating-back">
+            <MarketingFragment kind="leads" />
+          </div>
+          <div className="floating-main">
+            <MarketingFragment kind="rule" />
           </div>
         </div>
       </section>
-      <section className="feature-section feature-split" id="drafts">
-        <div className="section-copy">
-          <span className="eyebrow">A draft, not an autopilot</span>
+      <section className="floating-feature" id="drafts" data-proof="drafts">
+        <header className="narrow-heading">
           <h2>
-            You have the context.
-            <br />
-            You make the reply.
+            <span>Drafts</span> you copy. Replies you choose.
           </h2>
           <p>
-            Draft a comment or DM in your voice. Choose a conversation starter or an honest pitch,
-            edit it, and copy it.
+            Write a comment or DM in your voice, as a conversation starter or an honest pitch. Edit
+            it, copy it, and decide whether to reply on Reddit.{" "}
+            <a href={MOCK_DETAIL.url} target="_blank" rel="noreferrer">
+              Open the thread
+            </a>
           </p>
-          <p>No sending. No managed accounts. The conversation stays on Reddit.</p>
-          <span className="inline-note">
-            <Check />
-            Your Reddit account stays yours.
-          </span>
-        </div>
-        <div className="soft-stage">
-          <DraftPreview />
+        </header>
+        <div className="floating-stage draft-stage">
+          <div className="fragment-prompt">
+            <AuthorAvatar name={MOCK_DETAIL.author} src={MOCK_DETAIL.avatar} size={32} />
+            <span>
+              {MOCK_DETAIL.title}
+              <small>u/{MOCK_DETAIL.author}</small>
+            </span>
+          </div>
+          <div className="floating-main">
+            <DraftPreview />
+          </div>
         </div>
       </section>
-      <section className="feature-section" id="alerts">
-        <div className="section-intro">
-          <span className="eyebrow">Keep up without keeping a tab open</span>
+      <section className="floating-feature" id="alerts" data-proof="alerts">
+        <header className="narrow-heading">
           <h2>
-            The next useful thread,
-            <br />
-            where you already work.
+            <span>Alerts</span> where you already work.
           </h2>
           <p>
-            New-lead alerts bring the score, reason, community, and original link to your email
-            digest, Slack, Discord, or webhook.
+            A new-lead digest brings the score, reason, community, and original link to email,
+            Slack, Discord, or your webhook. <a href="#costs">Compare alert cadence</a>
           </p>
-        </div>
-        <div className="alerts-stage">
-          <div className="integration-list">
+        </header>
+        <div className="floating-stage alert-stage">
+          <div className="alert-channels">
             <span>
               <Mail />
-              Email digest
+              Email
             </span>
             <span>
               <BrandImage name="Slack" src="/brands/slack.svg" size={26} />
@@ -113,22 +111,11 @@ export function MarketingIntentSections() {
               Webhook
             </span>
           </div>
-          <div className="alert-preview">
-            <div className="alert-heading">
-              <Bell />
-              <strong>A thread worth reading</strong>
-              <small>Digest preview</small>
+          <div className="floating-main alert-card">
+            <div className="fragment-title">
+              <Bell />A thread worth reading<small>Digest preview</small>
             </div>
-            <div className="draft-context">
-              <AuthorAvatar name={MOCK_DETAIL.author} src={MOCK_DETAIL.avatar} size={34} />
-              <div>
-                {MOCK_DETAIL.title}
-                <small>{MOCK_DETAIL.reason}</small>
-              </div>
-            </div>
-            <a href={MOCK_DETAIL.url} target="_blank" rel="noreferrer">
-              Read the original thread
-            </a>
+            <MarketingFragment kind="leads" />
           </div>
         </div>
       </section>
