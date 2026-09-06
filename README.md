@@ -1,40 +1,73 @@
 # Reddit Leads
 
-A Reddit buyer-intent finder you can self-host for free. It scores Reddit posts and comments
-against your product, tells you why each one scored what it did, and shows what the data for
-every lead cost, down to the request.
+A Reddit buyer-intent finder you can self-host for free. It watches the subreddits and
+keywords your buyers use, scores every post and comment against your product, tells you in
+one sentence why each one scored what it did, and shows what the data behind that lead cost,
+down to the request.
 
 Data comes from [AnyAPI](https://getanyapi.com): one key, pay per request in USD, no
 subscription. "Premium" here means connecting your own AnyAPI wallet, not paying us a monthly
 fee. Self-hosting has no limits at all.
 
-This repository is at layer 2: the shell, sign-in and wallet connect, plus the product profile,
-the scheduled scan, intent scoring and the ranked feed. Reply drafts and alerts land next.
+## What it does
+
+- **Builds your product profile from your URL.** One page read plus one language model call
+  gives you the pain, the solution, who buys, the subreddits they post in and the searches
+  they run. Everything is editable.
+- **Scans on a schedule.** Per keyword and per tracked subreddit, then a title-level triage,
+  then it opens only the threads worth reading, then the comments on the best of those. Cost
+  follows quality, not volume.
+- **Scores with a written reason.** 0-100 from fit, intent and how alive the thread is, plus
+  an intent stage, the phrase that matched, and a seller-side flag for the people who are
+  selling rather than buying.
+- **Ranks the feed.** Filter by window, community and stage. Every card carries the poster,
+  the community, the age, the subreddit's own self-promotion rule, and the cost line.
+- **Drafts a reply in your voice.** Comment or DM, conversation-starter or honest pitch, with
+  a Copy button and nothing else.
+- **Sends alerts.** A digest email, a Slack or Discord post, or your own webhook.
+- **Finds the Reddit threads Google already ranks** for your keywords, with position, thread
+  age and whether a competitor is named in it.
+- **Watches your competitors** on Reddit and says whether each mention was positive, negative
+  or neutral.
+- **Groups your leads into pain themes**, over data you already paid for.
+- **Answers all of it over a read-only API and MCP**, so an agent can triage for you.
+
+## What it never does
+
+Deliberately absent, and not planned:
+
+- **No posting.** No comment or DM is ever sent for you. Drafts have a Copy button.
+- **No browser extension.**
+- **No conversation inbox.** Once you reply, the conversation belongs to Reddit.
+- **No feedback loop that rewrites your filters.** Marking a lead as not a fit records the
+  reason and shows it in Insights; it does not silently change what you see next.
+- **No archive of Reddit.** Search is the index. We keep 30 days and no more.
+- **No subscription.** There is no plan to buy here, in any tier.
 
 ## Five-minute self-host
 
-You need Docker, a free [Clerk](https://clerk.com) application for sign-in, and an
-[AnyAPI](https://getanyapi.com) key.
+You need Docker, a free [Clerk](https://clerk.com) application for sign-in, an
+[AnyAPI](https://getanyapi.com) key and an [OpenRouter](https://openrouter.ai) key.
 
 ```bash
-git clone <this repository> reddit-leads
+git clone <repo> reddit-leads
 cd reddit-leads
 cp .env.example .env
 node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"   # APP_ENCRYPTION_KEY
 ```
 
-Put that key in `APP_ENCRYPTION_KEY`, paste your two Clerk keys and your AnyAPI key into `.env`,
-then:
+Put that key in `APP_ENCRYPTION_KEY`, paste your Clerk, AnyAPI and OpenRouter keys into
+`.env`, then:
 
 ```bash
 docker compose up
 ```
 
 The app applies its own migrations on start and serves on <http://localhost:3000>. Sign up,
-and you are in.
+paste your product's URL, and press Scan now.
 
-To let people connect their own AnyAPI wallet instead of using your key, register this instance
-as an OAuth client once and paste the printed id into `ANYAPI_OAUTH_CLIENT_ID`:
+To let other people connect their own AnyAPI wallet instead of using your key, register this
+instance as an OAuth client once and paste the printed id into `ANYAPI_OAUTH_CLIENT_ID`:
 
 ```bash
 npm run anyapi:register
@@ -54,42 +87,107 @@ npm run anyapi:register
 | `ANYAPI_BASE_URL` | no | `https://api.getanyapi.com` | AnyAPI gateway. |
 | `ANYAPI_OAUTH_CLIENT_ID` | no | - | Printed by `npm run anyapi:register`. Needed for wallet connect. |
 | `ANYAPI_HOUSE_API_KEY` | no | - | The key used when a user has not connected a wallet. |
-| `OPENROUTER_API_KEY` | no | - | Pays for scoring, drafting and clustering. |
+| `OPENROUTER_API_KEY` | no | - | Pays for scoring, drafting and clustering. Without it nothing is scored. |
 | `OPENROUTER_MODEL` | no | `meta/muse-spark-1.3-contributor` | Override the model. |
-| `RESEND_API_KEY` | no | - | Email digests. |
+| `RESEND_API_KEY` | no | - | Sends the digest email. |
+| `ALERTS_FROM_EMAIL` | no | - | The From address on a digest. Email needs this and the Resend key. |
 | `HOUSE_DATA_CAP_USD_PER_DAY` | no | `25` | Daily ceiling on data spend from the house key. |
-| `HOUSE_LLM_CAP_USD_PER_DAY` | no | `10` | Daily ceiling on LLM spend. |
+| `HOUSE_LLM_CAP_USD_PER_DAY` | no | `10` | Daily ceiling on language model spend. |
+
+A variable set to nothing counts as unset, so an empty line in `.env` never half-configures a
+feature.
+
+## Tiers
+
+A hosted instance has two tiers. Self-hosting is neither: it has no limits at all.
+
+| Setting | Free | Connected wallet |
+|---|---|---|
+| Projects | 2 | unlimited |
+| Keywords per project | 25 | unlimited |
+| Tracked subreddits per project | 10 | unlimited |
+| Scan cadence | every 6 hours | hourly |
+| Comment scan | top 20 scored threads per scan | every thread over your threshold |
+| Feed window | 30 days | 30 days |
+| Drafts | unlimited | unlimited |
+| Alerts | daily digest + 1 webhook | hourly, unlimited webhooks |
+| Reddit SEO | 10 keywords, refreshed weekly, no volume | unlimited, refreshed daily, with monthly search volume |
+| Competitors | 3 | unlimited |
+| Insights | full | full |
+| API and MCP | read-only, 1,000 requests a day | read-only, 10,000 requests a day |
+
+Connecting a wallet buys freshness and breadth, not features. Every feature is on in every
+tier.
 
 ## How a wallet connection works
 
-Sign in, open Settings, and press Connect AnyAPI wallet. You land on the AnyAPI consent screen,
-where you set the spend cap this app may use, and come back connected. This app never sees or
-stores an AnyAPI key: it holds a refresh token, encrypted with `APP_ENCRYPTION_KEY`, and swaps it
-for a short-lived access token when it needs to make a call. Disconnect deletes the token here
-and revokes it at AnyAPI.
+Sign in, open Settings, and press Connect AnyAPI wallet. You land on the AnyAPI consent
+screen, where you set the spend cap this app may use, and come back connected. This app never
+sees or stores an AnyAPI key: it holds a refresh token, encrypted with `APP_ENCRYPTION_KEY`,
+and swaps it for a short-lived access token when it needs to make a call. Disconnect deletes
+the token here and revokes it at AnyAPI.
 
-Connecting a wallet buys freshness and breadth, not features: hourly scans instead of six-hourly,
-unlimited keywords, subreddits and projects, comment scanning on every thread over your threshold,
-and daily Reddit SEO refreshes with search volume. Everything else is on in every tier.
+## Alerts
+
+Settings -> Alerts is where new leads land. Add an email digest, a Slack or Discord webhook,
+or a generic webhook that receives the same digest as JSON. Email needs `RESEND_API_KEY` and
+`ALERTS_FROM_EMAIL`; the webhooks need nothing. A digest carries the day's new leads with
+their score, reason, community and link, in the same shapes the feed uses, and sends nothing
+at all when there is nothing new. The scheduler queues one digest pass an hour and each
+channel decides whether its own cadence is due.
+
+## API and MCP
+
+Settings -> API mints read-only keys prefixed `rl_sk_`. Send one as a bearer token:
+
+```bash
+curl -H "Authorization: Bearer $KEY" http://localhost:3000/api/v1/projects
+```
+
+Reading costs nothing, and every response says so with `X-Request-Cost-Usd: 0`. The schema is
+served at [`/openapi.json`](public/openapi.json) and the agent guide, which explains what a
+lead is and how to triage one, at [`/agent-guide.md`](public/agent-guide.md). The same reads
+are available to an agent over MCP at `/api/mcp`.
+
+## Costs, measured
+
+Real runs on this codebase against tally.so, on 2026-09-05. Data is what AnyAPI billed;
+model is what OpenRouter billed.
+
+| Run | AnyAPI requests | Data | Model | What came back |
+|---|---|---|---|---|
+| First scan, 12 keywords and 5 subreddits | 27 | $0.028 | $0.0067 | 4 leads |
+| Reddit SEO refresh, 3 keywords | 27 | $0.028 | - | 24 ranking threads |
+| Competitor scan, 3 competitors | 27 | $0.032 | - | mentions with a sentiment each |
+| Insights over stored leads | 0 | $0 | $0.0004 | pain themes and communities |
+| Daily digest email | 0 | $0 | - | one email |
+
+Two things keep the bill this small. Reddit rows are shared: the same search run inside your
+cadence window is reused, billed at zero, and the Data usage screen shows fetched against
+reused. And a scan is a funnel, so full posts and comment threads are only bought for the
+titles that survived triage.
 
 ## Data we store, and for how long
 
-Reddit posts and comments are public facts, so they are stored once and shared across projects:
-two people tracking the same keyword pay for one fetch between them, and the Data usage screen
-shows fetched versus reused honestly. Scores are never shared; the same post can be a 92 for one
-product and a 12 for another. Shared Reddit rows are deleted 30 days after they were posted,
-along with the leads pointing at them, which is also the feed window.
+Reddit posts and comments are public facts, so they are stored once and shared across
+projects: two people tracking the same keyword pay for one fetch between them. Scores are
+never shared; the same post can be a 92 for one product and a 12 for another. Shared Reddit
+rows are deleted 30 days after they were posted, along with the leads pointing at them, which
+is also the feed window.
 
-## What this is not
+## Built on AnyAPI
 
-Deliberately absent, and not planned:
+Every Reddit and Google call this app makes goes through [AnyAPI](https://getanyapi.com),
+using the published TypeScript SDK. That is the point of giving this away: the whole category
+sells you a subscription and hides what the data costs, and here the cost of a lead is printed
+on the lead.
 
-- **No posting.** No comment or DM is ever sent for you. Drafts have a Copy button.
-- **No browser extension.**
-- **No conversation inbox.** Once you reply, the conversation belongs to Reddit.
-- **No feedback loop that rewrites your filters.** Marking a lead as not a fit records the
-  reason and shows it in Insights; it does not silently change what you see next.
-- **No archive of Reddit.** Search is the index. We keep 30 days and no more.
+- One key reaches Reddit search, subreddit listings, posts, comments, profiles and community
+  details, plus Google search for the Reddit SEO screen.
+- You pay per request in USD, from a wallet, with no plan and no minimum.
+- Every call returns its own price, which is what the cost lines in this app are made of.
+- A free trial key with starter credit and no card is a sign-up away at
+  <https://getanyapi.com>.
 
 ## Development
 
@@ -101,8 +199,9 @@ npm run db:migrate
 npm run dev
 ```
 
-`npm run check` runs the typecheck, the linter and the unit tests. `npm run db:generate` writes a
-new migration after a schema change.
+`npm run check` runs the typecheck, the linter and the unit tests. Three tests open a real
+database and skip unless `DATABASE_URL` is set. `npm run db:generate` writes a new migration
+after a schema change.
 
 ## Licence
 
