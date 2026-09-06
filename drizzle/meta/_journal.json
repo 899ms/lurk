@@ -57,6 +57,13 @@
       "when": 1788688918323,
       "tag": "0007_redecide_held_verdicts",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1788689012286,
+      "tag": "0008_rejudge_after_gate_change",
+      "breakpoints": true
     }
   ]
 }
