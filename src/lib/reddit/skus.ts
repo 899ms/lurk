@@ -32,6 +32,13 @@ function storePosts(data: unknown, runId: string): Promise<StoredPost[]> {
   });
 }
 
+/**
+ * Keyword search is sorted by relevance, not by new. Measured on 2026-09-05:
+ * "Typeform alternatives" over one week returned 1 unrelated post sorted new
+ * and 7 on-topic ones sorted by relevance, so newest-first threw the leads away
+ * and left the title prefilter nothing to keep. The timeframe already bounds
+ * how old a result can be.
+ */
 export async function fetchSearch(
   ctx: FetchContext,
   query: string,
@@ -42,10 +49,10 @@ export async function fetchSearch(
     kind: "keyword",
     sku: "reddit.search",
     normalizedQuery: normalizeQuery(query),
-    sort: "new",
+    sort: "relevance",
     timeframe,
     run: async () => {
-      const res = await ctx.funded.client.reddit.search({ query, sort: "new", timeframe });
+      const res = await ctx.funded.client.reddit.search({ query, sort: "relevance", timeframe });
       return { data: res.output.found ? res.output.data : null, costUsd: res.costUsd };
     },
     store: storePosts,

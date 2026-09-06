@@ -8,8 +8,8 @@ Data comes from [AnyAPI](https://getanyapi.com): one key, pay per request in USD
 subscription. "Premium" here means connecting your own AnyAPI wallet, not paying us a monthly
 fee. Self-hosting has no limits at all.
 
-This repository is at layer 1: the shell, the database, sign-in and wallet connect. Scanning,
-scoring and the feed land in the next layer.
+This repository is at layer 2: the shell, sign-in and wallet connect, plus the product profile,
+the scheduled scan, intent scoring and the ranked feed. Reply drafts and alerts land next.
 
 ## Five-minute self-host
 
