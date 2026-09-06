@@ -1,11 +1,13 @@
+import { headers } from "next/headers";
 import { Header } from "@/components/Header";
 import { ProjectSwitcher } from "@/components/ProjectSwitcher";
 import { Rail, type RailGroup } from "@/components/Rail";
 import { requireLocalUser } from "@/lib/auth";
 import { listMentions } from "@/lib/competitors/read";
 import { newLeadCount } from "@/lib/leads";
-import { listProjects } from "@/lib/projects";
+import { activeProject, listProjects } from "@/lib/projects";
 import { listOpportunities } from "@/lib/seo/read";
+import { URL_HEADER } from "@/proxy";
 
 type RailCounts = { newLeads: number; rankingThreads: number; mentions: number };
 
@@ -53,10 +55,16 @@ async function countsFor(projectId: string): Promise<RailCounts> {
   };
 }
 
+/** The project the page below is showing, which the rail has to count for. */
+async function requestedProject(): Promise<string | undefined> {
+  const url = (await headers()).get(URL_HEADER);
+  return (url ? new URL(url).searchParams.get("project") : null) ?? undefined;
+}
+
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireLocalUser();
   const projects = await listProjects(user.id);
-  const project = projects[0];
+  const project = await activeProject(user.id, await requestedProject());
   const counts = project ? await countsFor(project.id) : EMPTY_COUNTS;
   return (
     <div className="flex min-h-dvh flex-col">
@@ -65,7 +73,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <Rail groups={groupsFor(counts)}>
           <ProjectSwitcher
             projects={projects.map((one) => ({ id: one.id, name: one.name, url: one.url }))}
-            defaultId={projects[0]?.id ?? null}
+            defaultId={project?.id ?? null}
           />
         </Rail>
         <main className="flex-1" style={{ padding: "var(--page-gutter)" }}>
