@@ -1,10 +1,13 @@
 /**
- * Invented content for the marketing app mock. A form builder called Formcraft
- * watching r/SaaS, r/startups and r/webdev. Nothing here is a real lead, and no
- * avatar is a real Reddit account: the faces are drawn in public/art.
+ * Saved public examples read from the product Postgres on 2026-09-05:
+ * leads + reddit_posts + reddit_comments + reddit_authors; SEO from
+ * seo_opportunities + reddit_posts. Comment leads use the comment author.
+ * Real r/nocode and r/Entrepreneur icons and the r/nocode sidebar policy came
+ * from AnyAPI SDK reddit.subreddit_details on the same date ($0.0012 each).
+ * Titles, permalinks, avatars, scores, reasons and phrases are real saved data.
+ * Cost lines illustrate a measured call price, not total cost for these leads.
+ * No synthetic identities, live counts, request IDs or current-rank claims.
  */
-
-import type { RankingThread } from "@/components/seo/OpportunityCard";
 import type { RailIcon } from "@/components/Rail";
 
 export type MockLead = {
@@ -16,210 +19,127 @@ export type MockLead = {
   score: number;
   stage: string;
   title: string;
+  url: string;
   reason: string;
   body: string;
   matchedPhrase: string;
-  points: number;
-  comments: number;
   promoRule: string;
   costUsd: number;
   sku: string;
-  requestId: string;
+  kind: string;
 };
 
 export const MOCK_LEADS: MockLead[] = [
   {
-    author: "parker_draws",
-    avatar: "/art/snoo-1.svg",
-    subreddit: "SaaS",
-    subredditIcon: "/art/community-saas.svg",
-    age: "3h ago",
-    score: 94,
+    author: "driftmoose88",
+    avatar: "https://i.redd.it/snoovatar/avatars/844c1f80-3dd6-42e5-9c6b-432481eda424-headshot.png",
+    subreddit: "nocode",
+    subredditIcon:
+      "https://styles.redditmedia.com/t5_3gbip/styles/communityIcon_99qld76bwkle1.png?width=64&frame=1&auto=webp&s=8ae23376d057ff01792c2af164cbfad72a78f9df",
+    age: "Saved Sep 2",
+    score: 83,
     stage: "comparing",
-    title: "Typeform pricing just went up again, what is everyone moving to?",
+    title: "Looking for a simpler Jotform alternative",
+    url: "https://www.reddit.com/r/nocode/comments/1w5mqwf/looking_for_a_simpler_jotform_alternative/",
     reason:
-      "Priced out of their current form tool this month and asking the room for a replacement. Names conditional logic as the thing they cannot lose.",
-    body: "We are a team of six and the seat pricing finally tipped over what the forms are worth to us. I need something with conditional logic and a real API. Ideally self serve. What are you all actually using and happy with? Willing to switch this week.",
-    matchedPhrase: "I need something with conditional logic and a real API.",
-    points: 41,
-    comments: 63,
-    promoRule: "Self promo allowed in comments",
+      "They find Jotform overkill for basic surveys and asked for a simpler tool non-technical staff can manage.",
+    body: "Looking for a Jotform alternative that's more focused on surveys/feedback",
+    matchedPhrase: "Looking for a Jotform alternative that's more focused on surveys/feedback",
+    promoRule: "No blatant self-promotion; contribute value",
     costUsd: 0.0012,
     sku: "reddit.search",
-    requestId: "req_2f8c41ab",
+    kind: "Post",
   },
   {
-    author: "mrivera_builds",
-    avatar: "/art/snoo-2.svg",
-    subreddit: "startups",
-    subredditIcon: "/art/community-startups.svg",
-    age: "5h ago",
-    score: 91,
+    author: "jordanmiller81",
+    avatar: "https://i.redd.it/snoovatar/avatars/00b115bf-9fbb-4b98-ae27-b1c14663f0d8-headshot.png",
+    subreddit: "nocode",
+    subredditIcon:
+      "https://styles.redditmedia.com/t5_3gbip/styles/communityIcon_99qld76bwkle1.png?width=64&frame=1&auto=webp&s=8ae23376d057ff01792c2af164cbfad72a78f9df",
+    age: "Saved Sep 2",
+    score: 75,
     stage: "solution seeking",
-    title: "Need conditional logic in a form without paying for an enterprise plan",
+    title: "Looking for a simpler Jotform alternative",
+    url: "https://www.reddit.com/r/nocode/comments/1w5mqwf/looking_for_a_simpler_jotform_alternative/p7gb2jb/",
     reason:
-      "Has a working form today and one missing feature. Says the quote they were given is out of reach for a team this size.",
-    body: "Onboarding survey branches three ways depending on the answer to question two. Every tool that does that wants an annual enterprise plan. Is there anything that does branching on a normal plan, or do I build it myself?",
-    matchedPhrase: "Is there anything that does branching on a normal plan",
-    points: 27,
-    comments: 38,
-    promoRule: "Self promo with disclosure",
+      "Shares the pain of needing a simpler Jotform replacement and asks for an alternative too.",
+    body: "I'm actually looking for an alternative too",
+    matchedPhrase: "I'm actually looking for an alternative too",
+    promoRule: "No blatant self-promotion; contribute value",
     costUsd: 0.0012,
     sku: "reddit.search",
-    requestId: "req_9d4b70ce",
-  },
-  {
-    author: "jvaldez_dev",
-    avatar: "/art/snoo-3.svg",
-    subreddit: "webdev",
-    subredditIcon: "/art/community-webdev.svg",
-    age: "9h ago",
-    score: 88,
-    stage: "problem aware",
-    title: "Cleanest way to drop a multi step form into a Next.js site?",
-    reason:
-      "Building for a client and weighing a hosted form against writing the handling themselves. Cares about the embed, not the brand.",
-    body: "Client wants a four step intake form on a marketing site. I would rather not hand roll the state, the validation and the storage again. What are people embedding these days that does not fight the router?",
-    matchedPhrase: "I would rather not hand roll the state, the validation and the storage again",
-    points: 18,
-    comments: 52,
-    promoRule: "No self promo",
-    costUsd: 0.0012,
-    sku: "reddit.search",
-    requestId: "req_51ea6fd0",
+    kind: "Comment",
   },
 ];
 
-/** The one lead the proof cards quote from. */
 export const MOCK_DETAIL = MOCK_LEADS[0];
+export const MOCK_TIMELINE = [
+  {
+    author: "driftmoose88",
+    avatar: "https://i.redd.it/snoovatar/avatars/844c1f80-3dd6-42e5-9c6b-432481eda424-headshot.png",
+    subreddit: "nocode",
+  },
+  {
+    author: "jordanmiller81",
+    avatar: "https://i.redd.it/snoovatar/avatars/00b115bf-9fbb-4b98-ae27-b1c14663f0d8-headshot.png",
+    subreddit: "nocode",
+  },
+  {
+    author: "akl773",
+    avatar: "https://i.redd.it/snoovatar/avatars/755f90a8-7759-4e52-9bf3-f69f7295f175-headshot.png",
+    subreddit: "nocode",
+  },
+];
+export const MOCK_SEO = [
+  {
+    keyword: "Typeform alternatives",
+    title: "Typeform Alternative",
+    url: "https://www.reddit.com/r/Entrepreneur/comments/vyf9yd/typeform_alternative/",
+    position: 1,
+    competitorPresent: true,
+    subreddit: "Entrepreneur",
+    icon: "https://styles.redditmedia.com/t5_2qldo/styles/communityIcon_vbw2fy8csgz01.png?width=64&frame=1&auto=webp&s=f9d09673d8d4331f2bb74fc5ed05eb49110bc790",
+    date: "2022-07-13",
+  },
+  {
+    keyword: "Typeform alternatives",
+    title: "Free typeform alternative?",
+    url: "https://www.reddit.com/r/Entrepreneur/comments/1d11f7a/free_typeform_alternative/",
+    position: 2,
+    competitorPresent: true,
+    subreddit: "Entrepreneur",
+    icon: "https://styles.redditmedia.com/t5_2qldo/styles/communityIcon_vbw2fy8csgz01.png?width=64&frame=1&auto=webp&s=f9d09673d8d4331f2bb74fc5ed05eb49110bc790",
+    date: "2024-05-26",
+  },
+];
 
 export const MOCK_DRAFT =
-  "Six seats is exactly where that pricing starts to sting. What does your logic look like right now, branching on one answer or a whole scoring path? That changes which of the cheaper options will actually hold up.";
+  "For a nonprofit, I would start with who will own the forms when volunteers change. Do you need anonymous feedback, or a way to follow up with each person? That will help narrow the options.";
 
-export type MockTimelineMark = { hour: number; author: string; avatar: string; subreddit: string };
-
-/** Where today's faces sit on the scan strip, and what came in before today. */
-export const MOCK_TIMELINE: MockTimelineMark[] = [
-  { hour: 3, author: "jvaldez_dev", avatar: "/art/snoo-3.svg", subreddit: "webdev" },
-  { hour: 7, author: "mrivera_builds", avatar: "/art/snoo-2.svg", subreddit: "startups" },
-  { hour: 9, author: "parker_draws", avatar: "/art/snoo-1.svg", subreddit: "SaaS" },
-  { hour: 14, author: "akira_ok", avatar: "/art/snoo-4.svg", subreddit: "SaaS" },
-  { hour: 18, author: "tsong_hq", avatar: "/art/snoo-1.svg", subreddit: "webdev" },
+export const MOCK_USAGE_ROWS = [
+  { api: "reddit.search", purpose: "Find matching threads", cost: "$0.0012" },
+  { api: "reddit.post", purpose: "Read a full post", cost: "$0.0012" },
+  { api: "reddit.post_comments", purpose: "Read the conversation", cost: "$0.0020" },
+  { api: "google.search", purpose: "Find ranking Reddit threads", cost: "$0.0009" },
 ];
 
-export const MOCK_TIMELINE_EARLIER = ["Sep 4 +6", "Sep 3 +4"];
-
-function daysAgo(days: number): Date {
-  return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-}
-
-export type MockKeyword = {
-  keyword: string;
-  monthlyVolume: number | null;
-  threads: RankingThread[];
-};
-
-export const MOCK_SEO_COST = { sku: "google.search", costUsd: 0.0009, requestId: "req_7c0a13de" };
-
-export const MOCK_SEO_KEYWORDS: MockKeyword[] = [
+export const MOCK_RAIL: { label: string; items: { name: string; icon: RailIcon }[] }[] = [
   {
-    keyword: "typeform alternative",
-    monthlyVolume: null,
-    threads: [
-      {
-        id: "seo-1",
-        position: 1,
-        competitorPresent: true,
-        title: "What are you using instead of Typeform in 2026?",
-        url: "https://www.reddit.com/r/SaaS/",
-        subreddit: "SaaS",
-        subredditIconUrl: "/art/community-saas.svg",
-        score: 213,
-        numComments: 148,
-        createdAt: daysAgo(122),
-      },
-      {
-        id: "seo-2",
-        position: 3,
-        competitorPresent: false,
-        title: "Form builder recommendations for a small team",
-        url: "https://www.reddit.com/r/startups/",
-        subreddit: "startups",
-        subredditIconUrl: "/art/community-startups.svg",
-        score: 64,
-        numComments: 61,
-        createdAt: daysAgo(268),
-      },
-    ],
-  },
-  {
-    keyword: "conditional logic forms",
-    monthlyVolume: null,
-    threads: [
-      {
-        id: "seo-3",
-        position: 2,
-        competitorPresent: true,
-        title: "Form tools that do branching without the upsell",
-        url: "https://www.reddit.com/r/webdev/",
-        subreddit: "webdev",
-        subredditIconUrl: "/art/community-webdev.svg",
-        score: 51,
-        numComments: 33,
-        createdAt: daysAgo(74),
-      },
-      {
-        id: "seo-4",
-        position: 6,
-        competitorPresent: false,
-        title: "Which form product has a usable API?",
-        url: "https://www.reddit.com/r/webdev/",
-        subreddit: "webdev",
-        subredditIconUrl: "/art/community-webdev.svg",
-        score: 22,
-        numComments: 27,
-        createdAt: daysAgo(369),
-      },
-    ],
-  },
-];
-
-export type MockUsageRow = {
-  api: string;
-  calls: number;
-  reused: number;
-  cost: string;
-};
-
-export const MOCK_USAGE_ROWS: MockUsageRow[] = [
-  { api: "reddit.search", calls: 186, reused: 71, cost: "$0.14" },
-  { api: "reddit.subreddit_posts", calls: 124, reused: 48, cost: "$0.09" },
-  { api: "reddit.post_comments", calls: 84, reused: 32, cost: "$0.06" },
-  { api: "reddit.subreddit_details", calls: 18, reused: 6, cost: "$0.02" },
-];
-
-export type MockRailGroup = {
-  label: string;
-  items: { name: string; icon: RailIcon; count?: number }[];
-};
-
-export const MOCK_RAIL: MockRailGroup[] = [
-  {
-    label: "Engage",
+    label: "Discover",
     items: [
-      { name: "Leads", icon: "radar", count: 38 },
+      { name: "Leads", icon: "radar" },
       { name: "Reddit SEO", icon: "search" },
     ],
   },
   {
-    label: "Research",
+    label: "Understand",
     items: [
-      { name: "Insights", icon: "lightbulb" },
       { name: "Competitors", icon: "swords" },
+      { name: "Insights", icon: "lightbulb" },
     ],
   },
   {
-    label: "Setup",
+    label: "Workspace",
     items: [
       { name: "Product", icon: "box" },
       { name: "Data usage", icon: "receipt" },

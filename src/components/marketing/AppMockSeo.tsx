@@ -1,19 +1,10 @@
-import { Hash, Search, Users } from "lucide-react";
-import { KeywordSection } from "@/components/seo/KeywordSection";
-import { MockButton } from "./MockButton";
-import { MockFilterPills } from "./MockFilterPills";
+import { SubredditChip } from "@/components/SubredditChip";
+import { CostLine } from "@/components/CostLine";
+import { BrandImage } from "./BrandImage";
 import { MockFrame } from "./MockFrame";
-import { MOCK_SEO_COST, MOCK_SEO_KEYWORDS } from "./mockContent";
+import { MockButton } from "./MockButton";
+import { MOCK_SEO } from "./mockContent";
 
-const ICON = "size-3.5 shrink-0 text-fg-muted";
-
-const PILLS = [
-  { icon: <Search className={ICON} aria-hidden="true" />, label: "All keywords" },
-  { icon: <Hash className={ICON} aria-hidden="true" />, label: "All subreddits" },
-  { icon: <Users className={ICON} aria-hidden="true" />, label: "Any thread" },
-];
-
-/** Reddit SEO: the threads Google already ranks for what you sell. */
 export function AppMockSeo() {
   return (
     <MockFrame
@@ -21,21 +12,44 @@ export function AppMockSeo() {
       title="Reddit SEO"
       actions={<MockButton label="Refresh now" tone="solid" />}
     >
-      <div className="flex flex-col gap-6 p-4">
-        <MockFilterPills pills={PILLS} />
-        {MOCK_SEO_KEYWORDS.map((group) => (
-          <KeywordSection
-            key={group.keyword}
-            keyword={group.keyword}
-            monthlyVolume={group.monthlyVolume}
-            threads={group.threads}
-            cost={MOCK_SEO_COST}
-          />
+      <div className="mock-content mock-seo">
+        <div className="mock-section-title">
+          <BrandImage name="Google" src="/brands/google.svg" size={24} />
+          <span>
+            Typeform alternatives<small>Saved Google results</small>
+          </span>
+        </div>
+        <p className="mock-muted">Find the conversations people reach from search.</p>
+        {MOCK_SEO.map((thread) => (
+          <div className="mock-seo-row" key={thread.url}>
+            <div className="mock-rank">
+              <BrandImage name="Google" src="/brands/google.svg" size={18} />#{thread.position}
+            </div>
+            <div>
+              <a href={thread.url} target="_blank" rel="noreferrer">
+                {thread.title}
+              </a>
+              <div className="mock-identity">
+                <SubredditChip name={thread.subreddit} iconUrl={thread.icon} />
+                <small>Posted {thread.date}</small>
+              </div>
+              {thread.competitorPresent ? (
+                <span className="competitor-flag">
+                  <BrandImage name="Typeform" domain="typeform.com" size={14} />
+                  Competitor named
+                </span>
+              ) : null}
+            </div>
+          </div>
         ))}
-        <p className="text-mono text-fg-muted">
-          Monthly search volume is on when you connect an AnyAPI wallet. It bills at the catalog
-          price for that call.
-        </p>
+        <div className="mock-volume">
+          Monthly search volume<span>Connect an AnyAPI wallet</span>
+        </div>
+        <div className="mock-cost">
+          <BrandImage name="AnyAPI" src="/anyapi-mark.svg" size={14} />
+          <CostLine costUsd={0.0009} sku="google.search" />
+          <span> / call example</span>
+        </div>
       </div>
     </MockFrame>
   );

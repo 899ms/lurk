@@ -1,30 +1,31 @@
-import { CalendarDays, Filter, Hash, Target } from "lucide-react";
+import { CalendarDays, Filter } from "lucide-react";
 import { MockButton } from "./MockButton";
-import { MockFilterPills } from "./MockFilterPills";
 import { MockFrame } from "./MockFrame";
 import { MockLeadCard } from "./MockLeadCard";
 import { MockTimeline } from "./MockTimeline";
 import { MOCK_LEADS } from "./mockContent";
 
-const ICON = "size-3.5 shrink-0 text-fg-muted";
-
-const PILLS = [
-  { icon: <CalendarDays className={ICON} aria-hidden="true" />, label: "30 days" },
-  { icon: <Hash className={ICON} aria-hidden="true" />, label: "All subreddits" },
-  { icon: <Target className={ICON} aria-hidden="true" />, label: "Any stage" },
-  { icon: <Filter className={ICON} aria-hidden="true" />, label: "New" },
-];
-
-/** The lead feed: filters, the day's faces, then one card per lead. */
 export function AppMockLeads() {
   return (
     <MockFrame active="Leads" title="Leads" actions={<MockButton label="Scan now" tone="solid" />}>
-      <div className="flex flex-col gap-4 p-4">
-        <MockFilterPills pills={PILLS} />
+      <div className="mock-content">
+        <div className="mock-filters">
+          <span>
+            <CalendarDays />
+            30 days
+          </span>
+          <span>
+            <Filter />
+            All communities
+          </span>
+          <small>Saved examples</small>
+        </div>
         <MockTimeline />
-        {MOCK_LEADS.map((lead) => (
-          <MockLeadCard key={lead.author} lead={lead} />
-        ))}
+        <MockLeadCard lead={MOCK_LEADS[0]} />
+        <div className="mock-comment">
+          <span className="mock-meta">Also in this conversation</span>
+          <MockLeadCard lead={MOCK_LEADS[1]} />
+        </div>
       </div>
     </MockFrame>
   );

@@ -1,8 +1,8 @@
 import { Box, Lightbulb, Radar, Receipt, Search, Settings, Swords } from "lucide-react";
 import type { RailIcon } from "@/components/Rail";
+import { BrandImage } from "./BrandImage";
 import { MOCK_RAIL } from "./mockContent";
 
-/** The same icon per destination the app's own rail uses. */
 const ICONS: Record<RailIcon, React.ComponentType<{ className?: string }>> = {
   radar: Radar,
   search: Search,
@@ -12,7 +12,6 @@ const ICONS: Record<RailIcon, React.ComponentType<{ className?: string }>> = {
   receipt: Receipt,
   settings: Settings,
 };
-
 type MockFrameProps = {
   active: string;
   title: string;
@@ -20,59 +19,45 @@ type MockFrameProps = {
   children: React.ReactNode;
 };
 
-/** The app chrome every marketing mock sits inside: rail, top bar, one screen. */
+/** A fitted 16:10 product window. Container units keep the whole screen in frame. */
 export function MockFrame({ active, title, actions, children }: MockFrameProps) {
   return (
-    <div className="overflow-hidden rounded-frame border bg-surface shadow-sm">
-      <div className="flex">
-        <aside
-          className="hidden shrink-0 flex-col gap-5 border-r bg-bg px-3 py-4 md:flex"
-          style={{ width: "var(--rail-width)" }}
-        >
-          <div className="flex flex-col gap-0.5 rounded-control border bg-surface px-2.5 py-2">
-            <span className="flex items-center gap-1.5 text-small" style={{ fontWeight: 500 }}>
-              <span className="size-1.5 rounded-full bg-score-hot" aria-hidden="true" />
-              Formcraft
+    <div className="mock-frame" aria-label={`${title} product preview`}>
+      <div className="mock-screen">
+        <aside className="mock-rail">
+          <div className="mock-project">
+            <BrandImage name="Tally" domain="tally.so" size={24} />
+            <span>
+              Tally<small>Saved example project</small>
             </span>
-            <span className="text-mono text-fg-muted">Last scan 2h ago</span>
           </div>
           {MOCK_RAIL.map((group) => (
-            <div key={group.label} className="flex flex-col gap-0.5">
-              <span className="px-2 pb-1 text-[11px] uppercase tracking-wide text-fg-muted">
-                {group.label}
-              </span>
+            <div className="mock-rail-group" key={group.label}>
+              <small>{group.label}</small>
               {group.items.map((item) => {
                 const Icon = ICONS[item.icon];
                 return (
-                <span
-                  key={item.name}
-                  className={
-                    item.name === active
-                      ? "flex items-center justify-between gap-2 rounded-control bg-surface-2 px-2 py-1.5 text-small text-fg"
-                      : "flex items-center justify-between gap-2 rounded-control px-2 py-1.5 text-small text-fg-muted"
-                  }
-                >
-                  <span className="flex items-center gap-2">
-                    <Icon className="size-4 shrink-0 text-fg-muted" />
+                  <span
+                    key={item.name}
+                    className={
+                      item.name === active ? "mock-destination selected" : "mock-destination"
+                    }
+                  >
+                    <Icon />
                     {item.name}
                   </span>
-                  {item.count === undefined ? null : (
-                    <span className="rounded-control bg-surface-2 px-1.5 text-mono tabular-nums text-fg-muted">
-                      {item.count}
-                    </span>
-                  )}
-                </span>
                 );
               })}
             </div>
           ))}
+          <span className="mock-rail-bottom">
+            <BrandImage name="AnyAPI" src="/anyapi-mark.svg" size={18} /> Data by AnyAPI
+          </span>
         </aside>
-        <div className="min-w-0 flex-1">
-          <div className="flex h-12 items-center justify-between border-b px-4">
-            <span className="text-small" style={{ fontWeight: 500 }}>
-              {title}
-            </span>
-            <div className="flex items-center gap-2">{actions}</div>
+        <div className="mock-main">
+          <div className="mock-topbar">
+            <span>{title}</span>
+            <div>{actions}</div>
           </div>
           {children}
         </div>
