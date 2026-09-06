@@ -1,10 +1,17 @@
-type SubredditChipProps = { name: string };
+import { Avatar } from "@/components/Avatar";
+import { cn } from "@/lib/utils";
 
-/** "r/SaaS" with the one dot of Reddit colour the design system allows. */
-export function SubredditChip({ name }: SubredditChipProps) {
+type SubredditChipProps = { name: string; iconUrl?: string | null; className?: string };
+
+/** "r/SaaS" with the community's own icon, or the one dot of Reddit colour. */
+export function SubredditChip({ name, iconUrl, className }: SubredditChipProps) {
   return (
-    <span className="inline-flex items-center gap-1 text-mono text-fg-muted">
-      <span className="size-1.5 shrink-0 rounded-full bg-reddit" aria-hidden="true" />
+    <span className={cn("inline-flex items-center gap-1.5 text-mono text-fg-muted", className)}>
+      {iconUrl ? (
+        <Avatar name={name} src={iconUrl} size={16} />
+      ) : (
+        <span className="size-1.5 shrink-0 rounded-full bg-reddit" aria-hidden="true" />
+      )}
       r/{name}
     </span>
   );

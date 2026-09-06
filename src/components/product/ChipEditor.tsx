@@ -2,6 +2,8 @@
 
 import { X } from "lucide-react";
 import { useState, useTransition } from "react";
+import { Avatar } from "@/components/Avatar";
+import { Favicon } from "@/components/Favicon";
 import { Button } from "@/components/ui/button";
 import {
   addChipAction,
@@ -17,7 +19,28 @@ type ChipEditorProps = {
   projectId: string;
   values: string[];
   limit: number | null;
+  /** Community icons, keyed by the lowercased subreddit name. */
+  icons?: Record<string, string | null>;
 };
+
+/** A subreddit shows its own icon; a competitor shows its site's favicon. */
+function ChipMark({
+  kind,
+  value,
+  icons,
+}: {
+  kind: ChipKind;
+  value: string;
+  icons?: Record<string, string | null>;
+}) {
+  if (kind === "subreddit") {
+    return <Avatar name={value} src={icons?.[value.toLowerCase()] ?? null} size={16} />;
+  }
+  if (kind === "competitor") {
+    return <Favicon url={`${value.toLowerCase().replace(/[^a-z0-9]/g, "")}.com`} name={value} size={16} />;
+  }
+  return null;
+}
 
 /** A removable list of short strings with one input to add another. */
 export function ChipEditor({
@@ -28,6 +51,7 @@ export function ChipEditor({
   projectId,
   values,
   limit,
+  icons,
 }: ChipEditorProps) {
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -63,6 +87,7 @@ export function ChipEditor({
               key={value}
               className="flex items-center gap-2 rounded-control border bg-surface-2 px-3 py-1 text-small"
             >
+              <ChipMark kind={kind} value={value} icons={icons} />
               {value}
               <button
                 type="button"

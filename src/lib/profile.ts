@@ -11,7 +11,8 @@ import {
 import { clientForUser } from "./anyapi";
 import { generateStructured } from "./llm";
 import { PROFILE_SYSTEM, PROMO_POLICY_SYSTEM } from "./prompts";
-import { fetchSubredditDetails, normalizeQuery, recordUsage } from "./reddit/fetch";
+import { normalizeQuery, recordUsage } from "./reddit/fetch";
+import { fetchSubredditDetails } from "./reddit/skus";
 import { capped, tierForUser } from "./tier";
 
 /** How long a subreddit sidebar is reused before we buy it again. */

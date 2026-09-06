@@ -1,40 +1,20 @@
-import { and, asc, count, desc, eq } from "drizzle-orm";
+import { aliasedTable, and, asc, count, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
   leads,
+  redditAuthors,
   redditComments,
   redditPosts,
   searchRunPosts,
   subreddits,
   usageLedger,
 } from "@/db/schema";
-import { normalizeQuery } from "./reddit/fetch";
 
-export type LeadStatus = "new" | "hidden" | "not_fit";
+import type { FeedFacets, FeedFilter, LeadCost } from "./feed";
 
-export type FeedLead = {
-  id: string;
-  score: number;
-  fit: number | null;
-  intent: number | null;
-  engagement: number | null;
-  stage: string | null;
-  reason: string | null;
-  matchedPhrase: string | null;
-  status: string;
-  title: string;
-  subreddit: string;
-  author: string | null;
-  url: string;
-  numComments: number | null;
-  createdAt: Date;
-  body: string | null;
-  commentId: string | null;
-  commentBody: string | null;
-  commentAuthor: string | null;
-};
+export type FeedLead = Awaited<ReturnType<typeof listLeads>>[number];
 
-export type LeadCost = { sku: string; costUsd: number; requestId: string | null } | null;
+const postAuthors = aliasedTable(redditAuthors, "post_authors");
 
 const feedColumns = {
   id: leads.id,
@@ -46,27 +26,72 @@ const feedColumns = {
   reason: leads.reason,
   matchedPhrase: leads.matchedPhrase,
   status: leads.status,
+  postId: leads.postId,
   title: redditPosts.title,
   subreddit: redditPosts.subreddit,
-  author: redditPosts.author,
+  postAuthor: redditPosts.author,
+  postAuthorAvatar: postAuthors.avatarUrl,
   url: redditPosts.url,
   numComments: redditPosts.numComments,
+  postScore: redditPosts.score,
+  imageUrl: redditPosts.imageUrl,
   createdAt: redditPosts.createdAt,
   body: redditPosts.body,
+  subredditIconUrl: subreddits.iconUrl,
+  promoPolicy: subreddits.promoPolicy,
+  rulesText: subreddits.rulesText,
   commentId: leads.commentId,
   commentBody: redditComments.body,
   commentAuthor: redditComments.author,
+  commentScore: redditComments.score,
+  commentCreatedAt: redditComments.createdAt,
+  authorAvatar: redditAuthors.avatarUrl,
 };
 
-/** The feed, best first, for one status tab. */
-export async function listLeads(projectId: string, status: LeadStatus): Promise<FeedLead[]> {
+function feedQuery() {
   return db()
     .select(feedColumns)
     .from(leads)
     .innerJoin(redditPosts, eq(redditPosts.id, leads.postId))
     .leftJoin(redditComments, eq(redditComments.id, leads.commentId))
-    .where(and(eq(leads.projectId, projectId), eq(leads.status, status)))
+    .leftJoin(subreddits, eq(subreddits.name, sql`lower(${redditPosts.subreddit})`))
+    .leftJoin(
+      redditAuthors,
+      eq(redditAuthors.username, sql`lower(coalesce(${redditComments.author}, ${redditPosts.author}))`),
+    )
+    .leftJoin(postAuthors, eq(postAuthors.username, sql`lower(${redditPosts.author})`));
+}
+
+function since(days: number): Date {
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+}
+
+/** The feed, best first, for one set of filter pills. */
+export async function listLeads(projectId: string, filter: FeedFilter) {
+  return feedQuery()
+    .where(
+      and(
+        eq(leads.projectId, projectId),
+        eq(leads.status, filter.status),
+        gte(redditPosts.createdAt, since(filter.days)),
+        filter.subreddit ? eq(sql`lower(${redditPosts.subreddit})`, filter.subreddit) : undefined,
+        filter.stage ? eq(leads.stage, filter.stage) : undefined,
+      ),
+    )
     .orderBy(desc(leads.score), desc(redditPosts.createdAt));
+}
+
+/** The subreddits and stages this project actually has leads in. */
+export async function feedFacets(projectId: string): Promise<FeedFacets> {
+  const rows = await db()
+    .select({ subreddit: redditPosts.subreddit, stage: leads.stage })
+    .from(leads)
+    .innerJoin(redditPosts, eq(redditPosts.id, leads.postId))
+    .where(eq(leads.projectId, projectId));
+  return {
+    subreddits: [...new Set(rows.map((row) => row.subreddit))].sort(),
+    stages: [...new Set(rows.map((row) => row.stage).filter((stage): stage is string => !!stage))],
+  };
 }
 
 export async function newLeadCount(projectId: string): Promise<number> {
@@ -77,41 +102,49 @@ export async function newLeadCount(projectId: string): Promise<number> {
   return rows[0]?.total ?? 0;
 }
 
-/** The subreddit's own self-promotion rule, as one sentence and its sidebar. */
-export async function subredditPolicy(name: string) {
-  const rows = await db()
-    .select()
-    .from(subreddits)
-    .where(eq(subreddits.name, normalizeQuery(name)));
-  return rows[0] ?? null;
-}
-
 /**
- * What this project paid to have the lead's post in front of it. The first
- * ledger line against a run that produced the post, preferring a paid fetch
- * over the reuse that followed it.
+ * What this project paid to have each post in front of it: the first ledger
+ * line against a run that produced the post, preferring the paid fetch over the
+ * reuse that followed it.
  */
-export async function leadCost(projectId: string, postId: string): Promise<LeadCost> {
+export async function leadCosts(
+  projectId: string,
+  postIds: string[],
+): Promise<Map<string, LeadCost>> {
+  if (postIds.length === 0) {
+    return new Map();
+  }
   const rows = await db()
     .select({
+      postId: searchRunPosts.postId,
       sku: usageLedger.sku,
       costUsd: usageLedger.costUsd,
       requestId: usageLedger.requestId,
+      reused: usageLedger.reused,
+      at: usageLedger.at,
     })
     .from(usageLedger)
     .innerJoin(searchRunPosts, eq(searchRunPosts.searchRunId, usageLedger.searchRunId))
-    .where(and(eq(usageLedger.projectId, projectId), eq(searchRunPosts.postId, postId)))
-    .orderBy(asc(usageLedger.reused), asc(usageLedger.at))
-    .limit(1);
-  const row = rows[0];
-  return row ? { sku: row.sku, costUsd: Number(row.costUsd), requestId: row.requestId } : null;
+    .where(and(eq(usageLedger.projectId, projectId), inArray(searchRunPosts.postId, postIds)))
+    .orderBy(asc(usageLedger.reused), asc(usageLedger.at));
+  const byPost = new Map<string, LeadCost>();
+  for (const row of rows) {
+    if (!byPost.has(row.postId)) {
+      byPost.set(row.postId, {
+        sku: row.sku,
+        costUsd: Number(row.costUsd),
+        requestId: row.requestId,
+      });
+    }
+  }
+  return byPost;
 }
 
 /** Moves a lead out of the feed, recording why when the user says it is a miss. */
 export async function setLeadStatus(
   projectId: string,
   leadId: string,
-  status: LeadStatus,
+  status: FeedFilter["status"],
   notFitReason: string | null,
 ): Promise<void> {
   await db()

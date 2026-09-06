@@ -9,23 +9,23 @@ const groupsFor = (newLeads: number): RailGroup[] => [
   {
     label: "Engage",
     items: [
-      { href: "/app/leads", label: "Leads", count: newLeads },
-      { href: "/app/seo", label: "Reddit SEO", count: 0 },
+      { href: "/app/leads", label: "Leads", icon: "radar", count: newLeads },
+      { href: "/app/seo", label: "Reddit SEO", icon: "search", count: 0 },
     ],
   },
   {
     label: "Research",
     items: [
-      { href: "/app/insights", label: "Insights" },
-      { href: "/app/competitors", label: "Competitors", count: 0 },
+      { href: "/app/insights", label: "Insights", icon: "lightbulb" },
+      { href: "/app/competitors", label: "Competitors", icon: "swords", count: 0 },
     ],
   },
   {
     label: "Setup",
     items: [
-      { href: "/app/product", label: "Product" },
-      { href: "/app/usage", label: "Data usage" },
-      { href: "/app/settings", label: "Settings" },
+      { href: "/app/product", label: "Product", icon: "box" },
+      { href: "/app/usage", label: "Data usage", icon: "receipt" },
+      { href: "/app/settings", label: "Settings", icon: "settings" },
     ],
   },
 ];
@@ -41,7 +41,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <div className="flex flex-1">
         <Rail groups={groupsFor(newLeads)}>
           <ProjectSwitcher
-            projects={projects.map((project) => ({ id: project.id, name: project.name }))}
+            projects={projects.map((one) => ({ id: one.id, name: one.name, url: one.url }))}
             defaultId={projects[0]?.id ?? null}
           />
         </Rail>

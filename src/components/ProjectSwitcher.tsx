@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Favicon } from "@/components/Favicon";
 
-export type SwitcherProject = { id: string; name: string };
+export type SwitcherProject = { id: string; name: string; url: string | null };
 
 type ProjectSwitcherProps = {
   projects: SwitcherProject[];
@@ -16,6 +17,8 @@ export function ProjectSwitcher({ projects, defaultId }: ProjectSwitcherProps) {
   const router = useRouter();
   const params = useSearchParams();
   const activeId = params.get("project") ?? defaultId;
+  const active =
+    projects.find((project) => project.id === activeId) ?? projects[0];
 
   function select(id: string) {
     const next = new URLSearchParams(params.toString());
@@ -26,18 +29,21 @@ export function ProjectSwitcher({ projects, defaultId }: ProjectSwitcherProps) {
   return (
     <div className="flex flex-col gap-2">
       {projects.length > 0 ? (
-        <select
-          value={activeId ?? ""}
-          onChange={(event) => select(event.target.value)}
-          aria-label="Active project"
-          className="h-10 rounded-control border bg-surface px-2 text-body text-fg"
-        >
-          {projects.map((project) => (
-            <option key={project.id} value={project.id}>
-              {project.name}
-            </option>
-          ))}
-        </select>
+        <div className="flex items-center gap-2 rounded-control border bg-surface px-2">
+          <Favicon url={active?.url ?? null} name={active?.name ?? "?"} />
+          <select
+            value={activeId ?? ""}
+            onChange={(event) => select(event.target.value)}
+            aria-label="Active project"
+            className="h-10 min-w-0 flex-1 bg-surface text-body text-fg"
+          >
+            {projects.map((project) => (
+              <option key={project.id} value={project.id}>
+                {project.name}
+              </option>
+            ))}
+          </select>
+        </div>
       ) : null}
       <Button
         variant="outline"

@@ -17,6 +17,7 @@ export type RawPost = {
   url?: string;
   createdUtc?: number;
   subreddit: string;
+  image?: string;
 };
 
 export type RawComment = {
@@ -56,6 +57,7 @@ function postValues(post: RawPost) {
     url: absolutePermalink(post),
     score: post.score ?? null,
     numComments: post.numComments ?? null,
+    imageUrl: post.image ?? null,
     createdAt: at(post.createdUtc),
     fetchedAt: new Date(),
   };
@@ -79,6 +81,7 @@ export async function upsertPosts(posts: RawPost[]): Promise<StoredPost[]> {
         body: sql`coalesce(excluded.body, ${redditPosts.body})`,
         score: sql`excluded.score`,
         numComments: sql`excluded.num_comments`,
+        imageUrl: sql`coalesce(excluded.image_url, ${redditPosts.imageUrl})`,
         fetchedAt: sql`excluded.fetched_at`,
       },
     })

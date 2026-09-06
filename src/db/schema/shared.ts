@@ -25,6 +25,7 @@ export const redditPosts = pgTable(
     url: text("url").notNull(),
     score: integer("score"),
     numComments: integer("num_comments"),
+    imageUrl: text("image_url"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
     fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
     raw: jsonb("raw"),
@@ -48,9 +49,18 @@ export const redditComments = pgTable("reddit_comments", {
 
 export const subreddits = pgTable("subreddits", {
   name: text("name").primaryKey(),
+  iconUrl: text("icon_url"),
   subscribers: integer("subscribers"),
   rulesText: text("rules_text"),
   promoPolicy: text("promo_policy"),
+  fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** One Reddit account's public face, so a lead can show who is asking. */
+export const redditAuthors = pgTable("reddit_authors", {
+  username: text("username").primaryKey(),
+  avatarUrl: text("avatar_url"),
+  raw: jsonb("raw"),
   fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

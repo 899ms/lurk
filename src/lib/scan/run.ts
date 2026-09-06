@@ -3,13 +3,14 @@ import { db } from "@/db";
 import { jobs } from "@/db/schema";
 import { enqueueJob, writeProgress } from "@/jobs/enqueue";
 import { clientForUser } from "@/lib/anyapi";
+import type { FetchContext } from "@/lib/reddit/fetch";
 import {
+  fetchAuthorProfile,
   fetchPost,
   fetchPostComments,
   fetchSearch,
   fetchSubredditPosts,
-  type FetchContext,
-} from "@/lib/reddit/fetch";
+} from "@/lib/reddit/skus";
 import type { StoredPost } from "@/lib/reddit/store";
 import { scanIntervalHours, tierForUser } from "@/lib/tier";
 import { RETENTION_DAYS } from "@/lib/tiers";
@@ -20,6 +21,9 @@ import { prefilterTitles, scoreItems, type Judgement, type ScorableItem } from "
 
 const HOUR_MS = 60 * 60 * 1000;
 const RETENTION_MS = RETENTION_DAYS * 24 * HOUR_MS;
+
+/** A Reddit avatar changes rarely, so one lookup covers a whole month. */
+const AUTHOR_MAX_AGE_MS = 30 * 24 * HOUR_MS;
 
 export type ScanOutcome = { candidates: number; read: number; leads: number };
 
@@ -77,12 +81,13 @@ async function scanComments(
   posts: StoredPost[],
   threadBudget: number | null,
   known: Set<string>,
-): Promise<LeadRow[]> {
+): Promise<{ rows: LeadRow[]; authors: string[] }> {
   const threads = posts
     .filter((post) => (post.numComments ?? 0) >= MIN_COMMENTS_FOR_THREAD)
     .slice(0, threadBudget ?? posts.length);
   const items: ScorableItem[] = [];
   const parentOf = new Map<string, string>();
+  const authorOf = new Map<string, string | null>();
   for (const post of threads) {
     const result = await fetchPostComments(ctx, post.id, post.url);
     for (const comment of result.value) {
@@ -90,6 +95,7 @@ async function scanComments(
         continue;
       }
       parentOf.set(comment.id, post.id);
+      authorOf.set(comment.id, comment.author);
       items.push({
         id: comment.id,
         title: post.title,
@@ -99,12 +105,28 @@ async function scanComments(
     }
   }
   if (items.length === 0) {
-    return [];
+    return { rows: [], authors: [] };
   }
   const judgements = await scoreItems(project.id, project.productText, items);
-  return keepers(project, judgements)
-    .filter((item) => parentOf.has(item.id))
-    .map((item) => toLead(project, item, parentOf.get(item.id) as string, item.id));
+  const kept = keepers(project, judgements).filter((item) => parentOf.has(item.id));
+  return {
+    rows: kept.map((item) => toLead(project, item, parentOf.get(item.id) as string, item.id)),
+    authors: kept.map((item) => authorOf.get(item.id) ?? "").filter(Boolean),
+  };
+}
+
+/**
+ * Faces for the feed, bought once a month per author. A failure here is not a
+ * failed scan: the card falls back to the author's initials.
+ */
+async function fetchAvatars(ctx: FetchContext, usernames: string[]): Promise<void> {
+  for (const username of new Set(usernames)) {
+    try {
+      await fetchAuthorProfile(ctx, username, AUTHOR_MAX_AGE_MS);
+    } catch {
+      // An avatar is decoration; the lead is already written.
+    }
+  }
 }
 
 /**
@@ -187,7 +209,14 @@ export async function runScan(projectId: string, jobId: string): Promise<ScanOut
     known,
   );
 
-  const written = await writeLeads([...postLeads, ...commentLeads]);
+  const written = await writeLeads([...postLeads, ...commentLeads.rows]);
+
+  await writeProgress(jobId, "Looking up who posted");
+  const postAuthors = postLeads
+    .map((lead) => full.find((post) => post.id === lead.postId)?.author ?? "")
+    .filter(Boolean);
+  await fetchAvatars(ctx, [...postAuthors, ...commentLeads.authors]);
+
   await writeProgress(jobId, "Finished");
   await enqueueJob("scan", projectId, new Date(Date.now() + scanIntervalHours(limits) * HOUR_MS));
   return { candidates: candidates.length, read: full.length, leads: written };

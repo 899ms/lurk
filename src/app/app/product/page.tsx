@@ -9,6 +9,7 @@ import {
   projectCompetitors,
   projectKeywords,
   projectSubreddits,
+  subreddits as subredditRows,
 } from "@/db/schema";
 import {
   rebuildProfileAction,
@@ -57,6 +58,9 @@ export default async function ProductPage({ searchParams }: ProductPageProps) {
       .where(eq(projectCompetitors.projectId, project.id)),
     tierForUser(user.id),
   ]);
+  const icons = Object.fromEntries(
+    (await db().select().from(subredditRows)).map((row) => [row.name, row.iconUrl]),
+  );
 
   return (
     <div className="flex max-w-3xl flex-col gap-6">
@@ -101,6 +105,7 @@ export default async function ProductPage({ searchParams }: ProductPageProps) {
         projectId={project.id}
         values={subs.map((row) => row.name)}
         limit={limits?.subredditsPerProject ?? null}
+        icons={icons}
       />
       <ChipEditor
         title="Competitors"
