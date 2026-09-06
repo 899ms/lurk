@@ -1,4 +1,4 @@
-import { ArrowUp, Copy, ExternalLink, EyeOff, MessageCircle, ThumbsDown } from "lucide-react";
+import { ArrowUp, Copy, ExternalLink, EyeOff, MessageCircle, PenLine, ThumbsDown } from "lucide-react";
 import { AuthorAvatar } from "@/components/AuthorAvatar";
 import { CostLine } from "@/components/CostLine";
 import { ScoreBadge } from "@/components/ScoreBadge";
@@ -14,6 +14,7 @@ const ICON = "size-3.5 text-fg-muted";
 
 const ACTIONS = [
   { label: "Open on Reddit", icon: ExternalLink, variant: "outline" as const },
+  { label: "Draft a reply", icon: PenLine, variant: "ghost" as const },
   { label: "Copy title", icon: Copy, variant: "ghost" as const },
   { label: "Hide", icon: EyeOff, variant: "ghost" as const },
   { label: "Not a fit", icon: ThumbsDown, variant: "ghost" as const },
