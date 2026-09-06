@@ -59,6 +59,17 @@ describe("what a failed job records", () => {
     );
   });
 
+  it("drops the NUL a rejected model quote leaves in the driver's complaint", () => {
+    const cause = Object.assign(new Error("invalid byte sequence for encoding UTF8: 0x00"), {
+      code: "22021",
+      detail: "the quote said it\u0000s free",
+    });
+    const reason = reasonFor(new Error("Failed query: insert into \"jobs\"", { cause }));
+
+    expect(reason).not.toContain("\u0000");
+    expect(reason).toContain("detail the quote said its free");
+  });
+
   it("leaves an error that carries no cause exactly as it reads", () => {
     expect(reasonFor(new LlmTimeoutError(LLM_CALL_TIMEOUT_MS))).toBe(
       new LlmTimeoutError(LLM_CALL_TIMEOUT_MS).message,

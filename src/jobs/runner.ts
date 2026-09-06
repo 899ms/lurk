@@ -52,6 +52,16 @@ export async function claimNextJob(now = new Date()): Promise<Job | null> {
 /** What a driver puts under its own error: the database's own complaint. */
 type Cause = { message?: unknown; code?: unknown; detail?: unknown; cause?: unknown };
 
+/**
+ * A NUL character reaches here inside a driver's own complaint, because the
+ * model output that failed the write is quoted back in it. Postgres refuses a
+ * NUL in text too, so leaving one in would fail the write of the failure and
+ * leave the job with no reason at all.
+ */
+function withoutNul(text: string): string {
+  return text.replaceAll("\u0000", "");
+}
+
 /** One piece of an error, on one line, or nothing when there is no text. */
 function line(value: unknown, label = ""): string | null {
   const text = typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
@@ -67,7 +77,7 @@ function line(value: unknown, label = ""): string | null {
  */
 export function reasonFor(error: unknown): string {
   if (!(error instanceof Error)) {
-    return String(error);
+    return withoutNul(String(error));
   }
   const parts = [line(error.message)];
   const seen = new Set<unknown>([error]);
@@ -84,7 +94,7 @@ export function reasonFor(error: unknown): string {
       said.add(part);
     }
   }
-  return [...said].join("; ");
+  return withoutNul([...said].join("; "));
 }
 
 /**

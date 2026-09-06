@@ -95,6 +95,28 @@ function costOf(inputTokens: number, outputTokens: number): number {
   return (inputTokens * input + outputTokens * output) / 1_000_000;
 }
 
+/**
+ * A model that means an apostrophe sometimes writes the escape \u0000, and
+ * JSON.parse turns that into a NUL character. Postgres accepts no NUL in text
+ * or jsonb, so one such quote failed a whole scan on 2026-09-06. Strings are
+ * cleaned everywhere they sit in the answer, nested objects and arrays
+ * included, before the schema reads them.
+ */
+export function withoutNulCharacters(value: unknown): unknown {
+  if (typeof value === "string") {
+    return value.replaceAll("\u0000", "");
+  }
+  if (Array.isArray(value)) {
+    return value.map(withoutNulCharacters);
+  }
+  if (typeof value === "object" && value !== null) {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, withoutNulCharacters(item)]),
+    );
+  }
+  return value;
+}
+
 export type LlmCall<T> = {
   purpose: string;
   projectId: string | null;
@@ -134,5 +156,5 @@ export async function generateStructured<T>(call: LlmCall<T>): Promise<T> {
       outputTokens,
       costUsd: costOf(inputTokens, outputTokens).toFixed(6),
     });
-  return result.object;
+  return call.schema.parse(withoutNulCharacters(result.object));
 }
