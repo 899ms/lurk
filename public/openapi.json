@@ -1,0 +1,524 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Reddit Leads API",
+    "version": "1.0.0",
+    "description": "Read-only access to scored Reddit buyer-intent leads. Leads are scored output over Reddit posts and comments bought per call from AnyAPI, not raw Reddit access. The score is a sort order for a human's attention, not a probability that the person will buy. Reading this API is free: every response carries X-Request-Cost-Usd: 0.",
+    "license": { "name": "MIT", "identifier": "MIT" }
+  },
+  "servers": [{ "url": "/api/v1", "description": "This instance" }],
+  "security": [{ "apiKey": [] }],
+  "tags": [
+    { "name": "Account", "description": "Who the key belongs to and what it may do." },
+    { "name": "Projects", "description": "One product profile and everything scored for it." }
+  ],
+  "paths": {
+    "/me": {
+      "get": {
+        "tags": ["Account"],
+        "operationId": "getMe",
+        "summary": "The account behind the key, its tier limits and today's request count",
+        "responses": {
+          "200": {
+            "description": "The caller",
+            "headers": { "X-Request-Cost-Usd": { "$ref": "#/components/headers/RequestCost" } },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Me" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "429": { "$ref": "#/components/responses/RateLimited" }
+        }
+      }
+    },
+    "/projects": {
+      "get": {
+        "tags": ["Projects"],
+        "operationId": "listProjects",
+        "summary": "Every project on this account",
+        "responses": {
+          "200": {
+            "description": "Projects, oldest first",
+            "headers": { "X-Request-Cost-Usd": { "$ref": "#/components/headers/RequestCost" } },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["projects"],
+                  "properties": {
+                    "projects": { "type": "array", "items": { "$ref": "#/components/schemas/Project" } }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "429": { "$ref": "#/components/responses/RateLimited" }
+        }
+      }
+    },
+    "/projects/{id}": {
+      "get": {
+        "tags": ["Projects"],
+        "operationId": "getProject",
+        "summary": "One project with its keywords, subreddits and competitors",
+        "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+        "responses": {
+          "200": {
+            "description": "The project",
+            "headers": { "X-Request-Cost-Usd": { "$ref": "#/components/headers/RequestCost" } },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["project"],
+                  "properties": { "project": { "$ref": "#/components/schemas/ProjectDetail" } }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "429": { "$ref": "#/components/responses/RateLimited" }
+        }
+      }
+    },
+    "/projects/{id}/leads": {
+      "get": {
+        "tags": ["Projects"],
+        "operationId": "listLeads",
+        "summary": "One page of a project's leads, highest score first",
+        "description": "Defaults to the untriaged queue (status=new) over the last 30 days of Reddit posts. `since` is a different question from that window: it filters on when the lead was scored, which is what an incremental sync wants.",
+        "parameters": [
+          { "$ref": "#/components/parameters/ProjectId" },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "Defaults to new.",
+            "schema": { "type": "string", "enum": ["new", "hidden", "not_fit", "all"], "default": "new" }
+          },
+          {
+            "name": "minScore",
+            "in": "query",
+            "schema": { "type": "integer", "minimum": 0, "maximum": 100 }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "description": "ISO 8601. Only leads scored at or after this moment.",
+            "schema": { "type": "string", "format": "date-time" }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 50 }
+          },
+          { "name": "offset", "in": "query", "schema": { "type": "integer", "minimum": 0, "default": 0 } },
+          {
+            "name": "include",
+            "in": "query",
+            "description": "Set to body to return the full post or comment text.",
+            "schema": { "type": "string", "enum": ["body"] }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of leads",
+            "headers": { "X-Request-Cost-Usd": { "$ref": "#/components/headers/RequestCost" } },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["leads", "pagination"],
+                  "properties": {
+                    "leads": { "type": "array", "items": { "$ref": "#/components/schemas/Lead" } },
+                    "pagination": { "$ref": "#/components/schemas/Pagination" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "429": { "$ref": "#/components/responses/RateLimited" }
+        }
+      }
+    },
+    "/projects/{id}/seo-opportunities": {
+      "get": {
+        "tags": ["Projects"],
+        "operationId": "listSeoOpportunities",
+        "summary": "Reddit threads already ranking on Google for this project's keywords",
+        "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+        "responses": {
+          "200": {
+            "description": "Opportunities, best position first",
+            "headers": { "X-Request-Cost-Usd": { "$ref": "#/components/headers/RequestCost" } },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["opportunities"],
+                  "properties": {
+                    "opportunities": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/SeoOpportunity" }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "429": { "$ref": "#/components/responses/RateLimited" }
+        }
+      }
+    },
+    "/projects/{id}/pain-themes": {
+      "get": {
+        "tags": ["Projects"],
+        "operationId": "listPainThemes",
+        "summary": "What this project's leads keep complaining about",
+        "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+        "responses": {
+          "200": {
+            "description": "Themes, newest clustering first",
+            "headers": { "X-Request-Cost-Usd": { "$ref": "#/components/headers/RequestCost" } },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["themes"],
+                  "properties": {
+                    "themes": { "type": "array", "items": { "$ref": "#/components/schemas/PainTheme" } }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "429": { "$ref": "#/components/responses/RateLimited" }
+        }
+      }
+    },
+    "/projects/{id}/usage": {
+      "get": {
+        "tags": ["Projects"],
+        "operationId": "getProjectUsage",
+        "summary": "Today's AnyAPI spend for this project",
+        "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+        "responses": {
+          "200": {
+            "description": "Today's ledger, grouped by the API that was called",
+            "headers": { "X-Request-Cost-Usd": { "$ref": "#/components/headers/RequestCost" } },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["usage"],
+                  "properties": { "usage": { "$ref": "#/components/schemas/Usage" } }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "429": { "$ref": "#/components/responses/RateLimited" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "apiKey": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "A key created in the app under Settings then API. It starts with rl_sk_ and is read-only."
+      }
+    },
+    "headers": {
+      "RequestCost": {
+        "description": "Always 0. Reading this API costs nothing; the money is in the Reddit data the scans bought.",
+        "schema": { "type": "string" }
+      },
+      "RetryAfter": {
+        "description": "Seconds until the daily counter resets at UTC midnight.",
+        "schema": { "type": "integer" }
+      }
+    },
+    "parameters": {
+      "ProjectId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "description": "Project id.",
+        "schema": { "type": "string" }
+      }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "Missing or unknown API key",
+        "headers": { "X-Request-Cost-Usd": { "$ref": "#/components/headers/RequestCost" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "NotFound": {
+        "description": "No such project or lead on this account",
+        "headers": { "X-Request-Cost-Usd": { "$ref": "#/components/headers/RequestCost" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "InvalidRequest": {
+        "description": "A filter value this API cannot read",
+        "headers": { "X-Request-Cost-Usd": { "$ref": "#/components/headers/RequestCost" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "RateLimited": {
+        "description": "The key has used its daily request allowance",
+        "headers": {
+          "Retry-After": { "$ref": "#/components/headers/RetryAfter" },
+          "X-Request-Cost-Usd": { "$ref": "#/components/headers/RequestCost" }
+        },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": ["code", "message"],
+            "properties": {
+              "code": {
+                "type": "string",
+                "enum": [
+                  "unauthorized",
+                  "forbidden",
+                  "not_found",
+                  "invalid_request",
+                  "rate_limited",
+                  "internal_error"
+                ]
+              },
+              "message": { "type": "string" }
+            }
+          }
+        }
+      },
+      "Me": {
+        "type": "object",
+        "required": ["user", "tier", "selfHosted", "limits", "key", "requestsToday", "requestsPerDay"],
+        "properties": {
+          "user": {
+            "type": "object",
+            "required": ["id", "email", "createdAt"],
+            "properties": {
+              "id": { "type": "string" },
+              "email": { "type": ["string", "null"] },
+              "createdAt": { "type": "string", "format": "date-time" }
+            }
+          },
+          "tier": { "type": "string", "enum": ["free", "connected"] },
+          "selfHosted": { "type": "boolean" },
+          "limits": {
+            "oneOf": [{ "$ref": "#/components/schemas/TierLimits" }, { "type": "null" }],
+            "description": "Null on a self-hosted instance, which has no limits."
+          },
+          "key": {
+            "type": "object",
+            "required": ["prefix", "scopes"],
+            "properties": {
+              "prefix": { "type": "string" },
+              "scopes": { "type": "array", "items": { "type": "string" } }
+            }
+          },
+          "requestsToday": { "type": "integer" },
+          "requestsPerDay": { "type": ["integer", "null"] }
+        }
+      },
+      "TierLimits": {
+        "type": "object",
+        "description": "What this tier allows. Null in any field means no limit.",
+        "properties": {
+          "projects": { "type": ["integer", "null"] },
+          "keywordsPerProject": { "type": ["integer", "null"] },
+          "subredditsPerProject": { "type": ["integer", "null"] },
+          "scanIntervalHours": { "type": "integer" },
+          "commentThreadsPerScan": { "type": ["integer", "null"] },
+          "feedWindowDays": { "type": "integer" },
+          "alertWebhooks": { "type": ["integer", "null"] },
+          "alertCadence": { "type": "string", "enum": ["daily", "hourly"] },
+          "seoKeywords": { "type": ["integer", "null"] },
+          "seoRefreshDays": { "type": "integer" },
+          "seoSearchVolume": { "type": "boolean" },
+          "competitors": { "type": ["integer", "null"] },
+          "apiRequestsPerDay": { "type": "integer" }
+        }
+      },
+      "Project": {
+        "type": "object",
+        "required": ["id", "name", "createdAt", "newLeads"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "url": { "type": ["string", "null"] },
+          "pain": { "type": ["string", "null"] },
+          "solution": { "type": ["string", "null"] },
+          "targetUsers": { "type": ["string", "null"] },
+          "geography": { "type": ["string", "null"] },
+          "budgetFit": { "type": ["string", "null"] },
+          "scoreThreshold": { "type": ["integer", "null"] },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "newLeads": { "type": "integer", "description": "Leads still waiting to be triaged." }
+        }
+      },
+      "ProjectDetail": {
+        "allOf": [
+          { "$ref": "#/components/schemas/Project" },
+          {
+            "type": "object",
+            "required": ["keywords", "subreddits", "competitors"],
+            "properties": {
+              "keywords": { "type": "array", "items": { "type": "string" } },
+              "subreddits": { "type": "array", "items": { "type": "string" } },
+              "competitors": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        ]
+      },
+      "Lead": {
+        "type": "object",
+        "required": [
+          "id",
+          "postId",
+          "commentId",
+          "title",
+          "subreddit",
+          "author",
+          "url",
+          "score",
+          "stage",
+          "reason",
+          "matchedPhrase",
+          "sellerSide",
+          "status",
+          "postedAt",
+          "scoredAt",
+          "costUsd"
+        ],
+        "properties": {
+          "id": { "type": "string" },
+          "postId": { "type": ["string", "null"] },
+          "commentId": {
+            "type": ["string", "null"],
+            "description": "Set when the lead is a comment on the post rather than the post itself."
+          },
+          "title": { "type": "string" },
+          "subreddit": { "type": "string" },
+          "author": { "type": ["string", "null"] },
+          "url": { "type": "string" },
+          "score": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100,
+            "description": "A sort order for a human's attention, not a probability of a sale."
+          },
+          "stage": {
+            "type": ["string", "null"],
+            "description": "problem-aware, solution-seeking, comparing or purchase-ready."
+          },
+          "reason": { "type": ["string", "null"], "description": "One line on why this was scored so." },
+          "matchedPhrase": { "type": ["string", "null"] },
+          "sellerSide": {
+            "type": "boolean",
+            "description": "True when the poster is selling rather than buying."
+          },
+          "status": { "type": "string", "enum": ["new", "hidden", "not_fit"] },
+          "postedAt": { "type": "string", "format": "date-time" },
+          "scoredAt": { "type": "string", "format": "date-time" },
+          "costUsd": {
+            "type": ["number", "null"],
+            "description": "What the AnyAPI call that fetched this post cost, in USD."
+          },
+          "body": {
+            "type": ["string", "null"],
+            "description": "The post or comment text. Only present with include=body."
+          }
+        }
+      },
+      "Pagination": {
+        "type": "object",
+        "required": ["limit", "offset", "hasMore"],
+        "properties": {
+          "limit": { "type": "integer" },
+          "offset": { "type": "integer" },
+          "hasMore": { "type": "boolean" }
+        }
+      },
+      "SeoOpportunity": {
+        "type": "object",
+        "required": ["id", "keyword", "position", "competitorPresent", "refreshedAt", "post"],
+        "properties": {
+          "id": { "type": "string" },
+          "keyword": { "type": "string" },
+          "position": { "type": ["integer", "null"], "description": "Google result position." },
+          "competitorPresent": { "type": "boolean" },
+          "refreshedAt": { "type": "string", "format": "date-time" },
+          "post": {
+            "oneOf": [
+              {
+                "type": "object",
+                "required": ["id", "title", "subreddit", "url"],
+                "properties": {
+                  "id": { "type": "string" },
+                  "title": { "type": "string" },
+                  "subreddit": { "type": "string" },
+                  "url": { "type": "string" }
+                }
+              },
+              { "type": "null" }
+            ]
+          }
+        }
+      },
+      "PainTheme": {
+        "type": "object",
+        "required": ["id", "label", "summary", "leadIds", "generatedAt"],
+        "properties": {
+          "id": { "type": "string" },
+          "label": { "type": "string" },
+          "summary": { "type": ["string", "null"] },
+          "leadIds": { "type": "array", "items": { "type": "string" } },
+          "generatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "required": ["calls", "costUsd", "fetched", "reused", "perApi"],
+        "properties": {
+          "calls": { "type": "integer" },
+          "costUsd": { "type": "number", "description": "Today's AnyAPI spend for this project, in USD." },
+          "fetched": { "type": "integer", "description": "Calls this project paid for." },
+          "reused": {
+            "type": "integer",
+            "description": "Calls served from data another project had already bought, at no cost here."
+          },
+          "perApi": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["api", "calls", "costUsd", "reused"],
+              "properties": {
+                "api": { "type": "string", "description": "Which AnyAPI endpoint was called." },
+                "calls": { "type": "integer" },
+                "costUsd": { "type": "number" },
+                "reused": { "type": "integer" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
