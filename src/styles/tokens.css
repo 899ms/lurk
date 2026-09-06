@@ -34,3 +34,36 @@
   --primary-fg: oklch(0.17 0 0);
   --score-cool: var(--fg-muted);
 }
+
+/* Scoped marketing palette: no changes to the authenticated application. */
+.marketing {
+  --m-brand-paper: oklch(1 0 0);
+  --m-sky-top: oklch(0.87 0.095 218);
+  --m-sky-bottom: oklch(0.97 0.025 215);
+  --m-cloud: oklch(1 0 0 / 0.93);
+  --m-cloud-soft: oklch(1 0 0 / 0.68);
+  --m-horizon: oklch(0.92 0.04 275);
+  --m-accent: oklch(0.46 0.1 233);
+  --m-stage: oklch(0.965 0.012 230);
+  --m-glass: oklch(1 0 0 / 0.42);
+  --m-highlight: oklch(0.94 0.065 93);
+  --m-shadow-ink: oklch(0.2 0.04 230 / 0.13);
+  --m-outline: oklch(0 0 0 / 0.08);
+  --m-radius-hero: 32px;
+  --m-radius-pill: 999px;
+  --m-shadow: 0 2px 5px var(--m-shadow-ink), 0 24px 64px -20px var(--m-shadow-ink);
+  --m-shadow-small: 0 2px 4px var(--m-shadow-ink), 0 12px 28px -14px var(--m-shadow-ink);
+}
+[data-theme="dark"] .marketing {
+  --m-sky-top: oklch(0.3 0.075 236);
+  --m-sky-bottom: oklch(0.22 0.025 240);
+  --m-cloud: oklch(0.5 0.045 227 / 0.7);
+  --m-cloud-soft: oklch(0.4 0.045 232 / 0.5);
+  --m-horizon: oklch(0.3 0.045 275);
+  --m-accent: oklch(0.8 0.075 220);
+  --m-stage: oklch(0.235 0.012 230);
+  --m-glass: oklch(0.65 0.025 230 / 0.12);
+  --m-highlight: oklch(0.4 0.05 93);
+  --m-shadow-ink: oklch(0 0 0 / 0.35);
+  --m-outline: oklch(1 0 0 / 0.12);
+}
