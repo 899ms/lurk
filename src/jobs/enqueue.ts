@@ -27,15 +27,29 @@ export async function enqueueJob(
   return rows[0];
 }
 
-/** Queues a job only when one of that kind is not already waiting. */
-export async function enqueueOnce(kind: string, runAt = new Date()): Promise<void> {
+/**
+ * Queues a job only when one of that kind is not already waiting, so a caller
+ * that only needs the schedule to exist never moves a scan a user just asked
+ * for. `projectId` defaults to the instance-wide jobs, which have none.
+ */
+export async function enqueueOnce(
+  kind: string,
+  runAt = new Date(),
+  projectId: string | null = null,
+): Promise<void> {
   const waiting = await db()
     .select({ id: jobs.id })
     .from(jobs)
-    .where(and(eq(jobs.kind, kind), isNull(jobs.startedAt)))
+    .where(
+      and(
+        eq(jobs.kind, kind),
+        isNull(jobs.startedAt),
+        projectId === null ? isNull(jobs.projectId) : eq(jobs.projectId, projectId),
+      ),
+    )
     .limit(1);
   if (waiting.length === 0) {
-    await db().insert(jobs).values({ kind, runAt });
+    await db().insert(jobs).values({ kind, projectId, runAt });
   }
 }
 

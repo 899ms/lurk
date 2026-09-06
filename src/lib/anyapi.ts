@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { AnyAPI } from "@getanyapi/sdk";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
@@ -9,31 +10,55 @@ import { refreshTokens } from "./oauth";
 /** Who pays for a call: the operator's house key, or one user's AnyAPI wallet. */
 export type Funding = "house" | `wallet:${string}`;
 
+/** One SDK call and the request id the gateway put on that call's response. */
+export type FundedCall<T> = { result: T; requestId: string | null };
+
 /**
  * The gateway returns its request id on the `x-anyapi-request-id` response
  * header only; the SDK's run envelope carries no such field. Wrapping fetch is
- * the one seam that sees the header, so the ledger can name the request.
+ * the one seam that sees the header, so the ledger can name the request. Every
+ * call has to be wrapped in `call`, which is what gives it its own id: a
+ * response without the header reports null rather than the previous call's id.
  */
 export type FundedClient = {
   client: AnyAPI;
   funding: Funding;
-  lastRequestId: () => string | null;
+  call: <T>(fn: () => Promise<T>) => Promise<FundedCall<T>>;
 };
 
 const REQUEST_ID_HEADER = "x-anyapi-request-id";
 
+/** The box belonging to the `call` this response is being fetched inside. */
+type RequestIdBox = { requestId: string | null };
+
+const requestIdScope = new AsyncLocalStorage<RequestIdBox>();
+
+/** Runs one call in its own scope, so it can only report its own request id. */
+export async function withRequestId<T>(fn: () => Promise<T>): Promise<FundedCall<T>> {
+  const box: RequestIdBox = { requestId: null };
+  const result = await requestIdScope.run(box, fn);
+  return { result, requestId: box.requestId };
+}
+
+/** Files what this response said, including saying nothing, into its call. */
+export function captureRequestId(response: Response): void {
+  const box = requestIdScope.getStore();
+  if (box) {
+    box.requestId = response.headers.get(REQUEST_ID_HEADER);
+  }
+}
+
 function clientCapturingRequestId(apiKey: string, baseUrl: string) {
-  let lastRequestId: string | null = null;
   const client = new AnyAPI({
     apiKey,
     baseUrl,
     fetch: async (input, init) => {
       const response = await fetch(input, init);
-      lastRequestId = response.headers.get(REQUEST_ID_HEADER) ?? lastRequestId;
+      captureRequestId(response);
       return response;
     },
   });
-  return { client, lastRequestId: () => lastRequestId };
+  return { client, call: withRequestId };
 }
 
 const EXPIRY_SKEW_MS = 60_000;

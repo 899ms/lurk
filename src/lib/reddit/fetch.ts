@@ -3,6 +3,7 @@ import { and, desc, eq, gte, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { searchRuns, usageLedger } from "@/db/schema";
 import type { FundedClient } from "@/lib/anyapi";
+import { assertHouseDataUnderCap } from "@/lib/usage";
 /** One search_runs row per kind of thing we fetch, on Reddit or on Google. */
 export type FetchKind =
   | "keyword"
@@ -85,6 +86,9 @@ export async function recordUsage(input: {
  * window is reused and billed at zero; otherwise we call AnyAPI, store the run,
  * and attribute its cost to the project that asked. A thrown SDK error writes
  * no run and no ledger line, so a failed scan never looks like a paid one.
+ *
+ * Every paid call the house pays for passes the daily house cap first. A user
+ * spending their own wallet is exempt: that money is not ours to ration.
  */
 export async function fetchShared<T>(input: SharedFetch<T>): Promise<SharedResult<T>> {
   const { ctx, kind, sku, normalizedQuery } = input;
@@ -106,7 +110,10 @@ export async function fetchShared<T>(input: SharedFetch<T>): Promise<SharedResul
     return { value, reused: true, costUsd: 0 };
   }
 
-  const result = await input.run();
+  if (ctx.funded.funding === "house") {
+    await assertHouseDataUnderCap();
+  }
+  const { result, requestId } = await ctx.funded.call(input.run);
   const runId = randomUUID();
   await db().insert(searchRuns).values({
     id: runId,
@@ -115,7 +122,7 @@ export async function fetchShared<T>(input: SharedFetch<T>): Promise<SharedResul
     sort,
     timeframe,
     costUsd: result.costUsd.toFixed(6),
-    requestId: ctx.funded.lastRequestId(),
+    requestId,
     fundedBy: ctx.funded.funding,
   });
   const value = await input.store(result.data, runId);
@@ -123,7 +130,7 @@ export async function fetchShared<T>(input: SharedFetch<T>): Promise<SharedResul
     projectId: ctx.projectId,
     sku,
     costUsd: result.costUsd,
-    requestId: ctx.funded.lastRequestId(),
+    requestId,
     searchRunId: runId,
     reused: false,
   });

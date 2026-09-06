@@ -92,7 +92,9 @@ export async function fetchKeywordVolumes(
   if (keywords.length === 0) {
     return 0;
   }
-  const res = await ctx.funded.client.seo.searchVolume({ keywords });
+  const { result: res, requestId } = await ctx.funded.call(() =>
+    ctx.funded.client.seo.searchVolume({ keywords }),
+  );
   const rows = res.output.found ? (res.output.data?.keywords ?? []) : [];
   if (rows.length > 0) {
     await db()
@@ -111,7 +113,7 @@ export async function fetchKeywordVolumes(
     projectId: ctx.projectId,
     sku: "seo.search_volume",
     costUsd: res.costUsd,
-    requestId: ctx.funded.lastRequestId(),
+    requestId,
     searchRunId: null,
     reused: false,
   });

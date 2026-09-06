@@ -1,6 +1,7 @@
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { llmUsage, usageLedger } from "@/db/schema";
+import { llmUsage, searchRuns, usageLedger } from "@/db/schema";
+import { config } from "./config";
 
 export type SkuUsage = { sku: string; calls: number; costUsd: number; reused: number };
 
@@ -48,6 +49,35 @@ export async function usageToday(projectIds: string[]): Promise<UsageToday> {
     reused: perSku.reduce((total, row) => total + row.reused, 0),
     perSku,
   };
+}
+
+/** Raised when today's house AnyAPI spend has already reached its ceiling. */
+export class HouseDataCapReachedError extends Error {
+  constructor(capUsd: number) {
+    super(`Today's data budget of $${capUsd.toFixed(2)} is used up. Scans resume tomorrow.`);
+    this.name = "HouseDataCapReachedError";
+  }
+}
+
+/**
+ * What the house key has spent on AnyAPI since midnight UTC, across every
+ * project. Read from search_runs because that is the only table that records
+ * who paid; a reused run costs nothing and is stored as no new run at all.
+ */
+export async function houseDataSpendToday(): Promise<number> {
+  const rows = await db()
+    .select({ total: sql<string>`coalesce(sum(${searchRuns.costUsd}), 0)` })
+    .from(searchRuns)
+    .where(and(eq(searchRuns.fundedBy, "house"), gte(searchRuns.fetchedAt, startOfToday())));
+  return Number(rows[0]?.total ?? 0);
+}
+
+/** Throws before a house-funded call that today's budget can no longer cover. */
+export async function assertHouseDataUnderCap(): Promise<void> {
+  const cap = config().HOUSE_DATA_CAP_USD_PER_DAY;
+  if ((await houseDataSpendToday()) >= cap) {
+    throw new HouseDataCapReachedError(cap);
+  }
 }
 
 export type ScanUsage = { calls: number; costUsd: number; reused: number; llmCostUsd: number };

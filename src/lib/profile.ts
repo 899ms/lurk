@@ -36,12 +36,12 @@ export type ProfileStep = "scrape" | "profile" | "subreddits" | "done";
 
 async function scrapeProduct(projectId: string, userId: string, url: string) {
   const funded = await clientForUser(userId);
-  const res = await funded.client.web.scrape({ url });
+  const { result: res, requestId } = await funded.call(() => funded.client.web.scrape({ url }));
   await recordUsage({
     projectId,
     sku: "web.scrape",
     costUsd: res.costUsd,
-    requestId: funded.lastRequestId(),
+    requestId,
     searchRunId: null,
     reused: false,
   });

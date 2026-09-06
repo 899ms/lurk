@@ -30,6 +30,14 @@ const schema = z.object({
   RESEND_API_KEY: optional(z.string()),
   ALERTS_FROM_EMAIL: optional(z.email()),
 
+  /**
+   * How many jobs the scheduler runs at once. Three is a starting hypothesis,
+   * not a tuned number: it keeps one slow scan from holding up the retention
+   * and digest jobs, and stays well inside the ten-connection pool in
+   * src/db/index.ts. Move it once real queue delay has been measured.
+   */
+  SCHEDULER_WORKERS: z.coerce.number().int().positive().default(3),
+
   HOUSE_DATA_CAP_USD_PER_DAY: z.coerce.number().nonnegative().default(25),
   HOUSE_LLM_CAP_USD_PER_DAY: z.coerce.number().nonnegative().default(10),
 });

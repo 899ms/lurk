@@ -57,7 +57,10 @@ describe.skipIf(!process.env.DATABASE_URL)("fetchShared against a database", () 
     };
     const funded = {
       funding: "house" as const,
-      lastRequestId: () => "test-request-id",
+      call: async <T>(fn: () => Promise<T>) => ({
+        result: await fn(),
+        requestId: "test-request-id",
+      }),
       client: {
         reddit: {
           search: async () => {
@@ -98,5 +101,100 @@ describe.skipIf(!process.env.DATABASE_URL)("fetchShared against a database", () 
       .delete(searchRuns)
       .where(and(eq(searchRuns.kind, "keyword"), eq(searchRuns.normalizedQuery, query)));
     await db().delete(redditPosts).where(eq(redditPosts.id, post.id.replace("t3_", "")));
+  });
+});
+
+/** Puts an environment variable back, absent included, so config() still parses. */
+function restore(name: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[name];
+  } else {
+    process.env[name] = value;
+  }
+}
+
+/**
+ * The house cap is the only thing standing between a runaway scan and the
+ * operator's AnyAPI bill, so it is proven to stop a paid house call and to
+ * leave a user spending their own wallet alone.
+ */
+describe.skipIf(!process.env.DATABASE_URL)("the house data cap", () => {
+  async function fixture(funding: "house" | `wallet:${string}`, calls: { count: number }) {
+    process.env.APP_ENCRYPTION_KEY ??= Buffer.alloc(32).toString("base64");
+    const { db } = await import("@/db");
+    const { projects, users } = await import("@/db/schema");
+    const [user] = await db()
+      .insert(users)
+      .values({ clerkUserId: `test_${randomUUID()}` })
+      .returning();
+    const [project] = await db()
+      .insert(projects)
+      .values({ userId: user.id, name: "Cap test" })
+      .returning();
+    const funded = {
+      funding,
+      call: async <T>(fn: () => Promise<T>) => ({ result: await fn(), requestId: null }),
+      client: {
+        reddit: {
+          search: async () => {
+            calls.count += 1;
+            return {
+              output: { found: true as const, data: { posts: [], nextCursor: null } },
+              costUsd: 0.0012,
+            };
+          },
+        },
+      },
+    };
+    return { db, user, project, funded };
+  }
+
+  it("refuses a paid house fetch over the cap and lets a wallet fetch through", async () => {
+    const { HouseDataCapReachedError } = await import("@/lib/usage");
+    const { fetchSearch } = await import("@/lib/reddit/skus");
+    const { searchRuns, usageLedger, users } = await import("@/db/schema");
+    const { and, eq } = await import("drizzle-orm");
+    const calls = { count: 0 };
+    const previous = process.env.HOUSE_DATA_CAP_USD_PER_DAY;
+    process.env.HOUSE_DATA_CAP_USD_PER_DAY = "0";
+
+    const house = await fixture("house", calls);
+    const query = `cap test ${randomUUID()}`;
+    const ctx = {
+      projectId: house.project.id,
+      funded: house.funded as unknown as Parameters<typeof fetchSearch>[0]["funded"],
+      maxAgeMs: 60 * 60 * 1000,
+    };
+    await expect(fetchSearch(ctx, query, "day")).rejects.toBeInstanceOf(HouseDataCapReachedError);
+    expect(calls.count).toBe(0);
+    expect(
+      await house
+        .db()
+        .select()
+        .from(searchRuns)
+        .where(and(eq(searchRuns.kind, "keyword"), eq(searchRuns.normalizedQuery, query))),
+    ).toHaveLength(0);
+    expect(
+      await house.db().select().from(usageLedger).where(eq(usageLedger.projectId, house.project.id)),
+    ).toHaveLength(0);
+
+    const wallet = await fixture(`wallet:${house.user.id}`, calls);
+    const walletQuery = `cap test ${randomUUID()}`;
+    const walletCtx = {
+      projectId: wallet.project.id,
+      funded: wallet.funded as unknown as Parameters<typeof fetchSearch>[0]["funded"],
+      maxAgeMs: 60 * 60 * 1000,
+    };
+    const result = await fetchSearch(walletCtx, walletQuery, "day");
+    expect(result.reused).toBe(false);
+    expect(calls.count).toBe(1);
+
+    restore("HOUSE_DATA_CAP_USD_PER_DAY", previous);
+    await house.db().delete(users).where(eq(users.id, house.user.id));
+    await wallet.db().delete(users).where(eq(users.id, wallet.user.id));
+    await wallet
+      .db()
+      .delete(searchRuns)
+      .where(and(eq(searchRuns.kind, "keyword"), eq(searchRuns.normalizedQuery, walletQuery)));
   });
 });
