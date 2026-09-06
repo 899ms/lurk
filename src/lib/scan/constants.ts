@@ -9,10 +9,13 @@ import type { TierLimits, TierName } from "@/lib/tiers";
 export const MAX_POST_READS_FREE = 60;
 
 /**
- * MentionCatch's published cut, and the plan's default until a user moves it on
- * the Product page.
+ * The user's optional extra floor on the feed, set on the Product page. The
+ * non-compensatory gates in gates.ts decide what qualifies; this only hides
+ * qualified leads a user considers too weak. The default is the bottom of the
+ * qualified band (fit 3, intent 2, engagement 0 folds to 50), so out of the box
+ * it admits every qualified lead.
  */
-export const DEFAULT_SCORE_THRESHOLD = 60;
+export const DEFAULT_SCORE_THRESHOLD = 50;
 
 /** How many items one scoring call judges at a time. */
 export const SCORE_BATCH_SIZE = 10;
@@ -32,8 +35,37 @@ export function postReadCap(limits: TierLimits | null, tier: TierName): number |
   return tier === "free" ? Math.min(cap, MAX_POST_READS_FREE) : cap;
 }
 
-/** The three dimensions folded into one sort order, with intent weighted double. */
-export function foldScore(fit: number, intent: number, engagement: number): number {
-  const weighted = fit + intent * 2 + engagement;
-  return Math.round((weighted / 40) * 100);
+/**
+ * How alive and how answerable a thread is, 0-4, computed here from facts we
+ * hold rather than asked of a model that cannot see a clock. Two halves:
+ *
+ *   freshness   under 24h: 2   under 72h: 1   older: 0
+ *   reply room  no replies: 2  under 10: 1    10 or more: 0
+ *
+ * The 24 and 72 hour steps are the decay hypothesis the external review
+ * proposed (astra-roast-2026-09-06.md, "ranking heuristic"), not a measured
+ * constant. The reply-room half says a crowded thread is a worse place to
+ * answer, never that it is solved: only the model's needState can say that.
+ */
+export function engagementScore(ageHours: number, numComments: number | null): number {
+  const freshness = ageHours <= 24 ? 2 : ageHours <= 72 ? 1 : 0;
+  const replies = numComments ?? 0;
+  const room = replies === 0 ? 2 : replies < 10 ? 1 : 0;
+  return freshness + room;
+}
+
+/**
+ * The feed's sort order, 0-100. Only leads the gates qualified reach the feed,
+ * so this decides order among leads that already passed, never admission:
+ *
+ *   score = 100 * (2 * fit + 2 * intent + engagement) / 20
+ *
+ * fit and intent are the model's 0-4 scales and carry double the weight of the
+ * 0-4 engagement, because what the person needs outranks how fresh the thread
+ * is. A missing fit or intent counts as 0. A qualified lead is fit >= 3 and
+ * intent >= 2, so the qualified band starts at 50 and the maximum is 100.
+ */
+export function foldScore(fit: number | null, intent: number | null, engagement: number): number {
+  const weighted = (fit ?? 0) * 2 + (intent ?? 0) * 2 + engagement;
+  return Math.round((weighted / 20) * 100);
 }

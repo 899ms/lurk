@@ -7,8 +7,10 @@ export type LeadRow = {
   postId: string;
   commentId: string | null;
   score: number;
-  fit: number;
-  intent: number;
+  /** The model's 0-4 scales. Null when the evidence could not establish one. */
+  fit: number | null;
+  intent: number | null;
+  /** 0-4, computed in code from the item's age and comment count. */
   engagement: number;
   stage: string;
   reason: string;

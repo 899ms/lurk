@@ -43,11 +43,15 @@ type LeadCardProps = { lead: CardLead; projectId: string };
 
 const EXCERPT_CHARS = 320;
 
+/** Fit, intent and engagement are all judged on the same 0-4 scale. */
 function Metric({ label, value }: { label: string; value: number | null }) {
   return (
     <span className="flex flex-col gap-0.5">
       <span className="text-mono text-fg-muted">{label}</span>
-      <span className="text-small tabular-nums text-fg">{value ?? "-"}</span>
+      <span className="text-small tabular-nums text-fg">
+        {value ?? "-"}
+        <span className="text-fg-muted"> / 4</span>
+      </span>
     </span>
   );
 }

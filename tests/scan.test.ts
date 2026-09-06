@@ -1,7 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 import { withoutKnownLeads, leadKey } from "@/lib/scan/leads";
-import { SCORER_SYSTEM } from "@/lib/prompts";
-import { MAX_POST_READS_FREE, foldScore, postReadCap } from "@/lib/scan/constants";
+import { JUDGEMENT_SYSTEM } from "@/lib/prompts";
+import {
+  MAX_POST_READS_FREE,
+  engagementScore,
+  foldScore,
+  postReadCap,
+} from "@/lib/scan/constants";
+import { BODY_CHAR_BUDGET, truncateBody } from "@/lib/scan/evidence";
+import { judge } from "@/lib/scan/gates";
+import type { Assessment, ScorableItem, TriageItem } from "@/lib/scan/judgement";
 import { retentionCutoff } from "@/lib/retention";
 import { TIERS } from "@/lib/tiers";
 
@@ -9,17 +17,191 @@ const generateStructured = vi.fn();
 
 vi.mock("@/lib/llm", () => ({ generateStructured }));
 
-const { scoreItems } = await import("@/lib/scan/score");
+const { judgeItems, readOrder, triageTitles } = await import("@/lib/scan/score");
+
+const item: ScorableItem = {
+  id: "p1",
+  title: "Looking for a form tool with logic, payments and webhooks",
+  subreddit: "SaaS",
+  body: "Our signup form needs conditional logic and it has to take payments.",
+  author: "asker",
+  ageHours: 5,
+  upvotes: 4,
+  numComments: 2,
+  parentBody: null,
+};
+
+function assessment(patch: Partial<Assessment> = {}): Assessment {
+  return {
+    id: "p1",
+    relationship: "buyer",
+    needState: "open",
+    fit: 4,
+    intent: 3,
+    stage: "solution_seeking",
+    requirements: [],
+    answerCoverage: "none",
+    unansweredAngle: null,
+    decision: "qualify",
+    reasonCodes: ["supported_open_need"],
+    needEvidence: { quote: "it has to take payments" },
+    reason: "Wants a form that takes payments.",
+    ...patch,
+  };
+}
 
 describe("score folding", () => {
-  it("weights intent double", () => {
-    expect(foldScore(10, 10, 10)).toBe(100);
-    expect(foldScore(2, 8, 5)).toBeGreaterThan(foldScore(8, 2, 5));
+  it("weights a point of fit or intent at twice a point of liveliness", () => {
+    expect(foldScore(4, 4, 4)).toBe(100);
+    expect(foldScore(4, 2, 0)).toBe(foldScore(3, 2, 2));
+    expect(foldScore(3, 3, 0)).toBeGreaterThan(foldScore(3, 2, 1));
   });
 
-  it("stays inside 0-100 at both ends", () => {
-    expect(foldScore(1, 1, 1)).toBe(10);
-    expect(foldScore(5, 5, 5)).toBe(50);
+  it("starts the qualified band at 50 and counts a missing scale as zero", () => {
+    expect(foldScore(3, 2, 0)).toBe(50);
+    expect(foldScore(null, null, 0)).toBe(0);
+  });
+});
+
+describe("engagement", () => {
+  it("is computed from age and replies, never asked of the model", () => {
+    expect(engagementScore(1, 0)).toBe(4);
+    expect(engagementScore(200, 40)).toBe(0);
+    expect(engagementScore(30, 3)).toBe(2);
+  });
+});
+
+describe("the qualification gates", () => {
+  it("does not let a live thread and top intent pay for a wrong-job fit", () => {
+    const judged = judge(assessment({ fit: 1, intent: 4 }), { ...item, ageHours: 1, numComments: 0 });
+    expect(judged.engagement).toBe(4);
+    expect(judged.score).toBeGreaterThan(50);
+    expect(judged.decision).toBe("reject");
+    expect(judged.reasonCodes).toContain("wrong_job");
+  });
+
+  it("does not qualify a need the person says is resolved", () => {
+    const judged = judge(assessment({ needState: "resolved" }), item);
+    expect(judged.decision).toBe("reject");
+    expect(judged.reasonCodes).toContain("resolved");
+  });
+
+  it("treats a helper as neither a seller nor a lead", () => {
+    const judged = judge(assessment({ relationship: "helper" }), item);
+    expect(judged.sellerSide).toBe(false);
+    expect(judged.decision).toBe("reject");
+    expect(judged.reasonCodes).toContain("helper_only");
+  });
+
+  it("rejects an unmet hard requirement the person named", () => {
+    const judged = judge(
+      assessment({
+        requirements: [
+          {
+            requirement: "Kafka topic throughput alerts",
+            importance: "hard",
+            satisfaction: "unmet",
+            targetEvidence: { quote: "it has to take payments" },
+          },
+        ],
+      }),
+      item,
+    );
+    expect(judged.decision).toBe("reject");
+    expect(judged.reasonCodes).toContain("hard_requirement_mismatch");
+  });
+
+  it("qualifies a buyer whose open need the product covers", () => {
+    const judged = judge(assessment(), item);
+    expect(judged.decision).toBe("qualify");
+    expect(judged.matchedPhrase).toBe("it has to take payments");
+  });
+});
+
+describe("judging a batch", () => {
+  it("drops a judgement for an id that was never in the batch", async () => {
+    generateStructured.mockReset();
+    generateStructured.mockResolvedValueOnce({
+      items: [assessment(), assessment({ id: "not_ours" })],
+    });
+    generateStructured.mockResolvedValueOnce({ items: [] });
+    const judged = await judgeItems("project-1", "A form builder", [item]);
+    expect(judged.map((one) => one.id)).toEqual(["p1"]);
+    expect(generateStructured.mock.calls[0][0].system).toBe(JUDGEMENT_SYSTEM);
+  });
+
+  it("asks once more for an id the model skipped, and never treats it as rejected", async () => {
+    generateStructured.mockReset();
+    generateStructured.mockResolvedValueOnce({ items: [assessment()] });
+    generateStructured.mockResolvedValueOnce({ items: [assessment({ id: "p2" })] });
+    const judged = await judgeItems("project-1", "A form builder", [item, { ...item, id: "p2" }]);
+    expect(generateStructured).toHaveBeenCalledTimes(2);
+    expect(generateStructured.mock.calls[1][0].prompt).toContain("id: p2");
+    expect(generateStructured.mock.calls[1][0].prompt).not.toContain("id: p1\n");
+    expect(judged.map((one) => one.id).sort()).toEqual(["p1", "p2"]);
+  });
+
+  it("leaves an id the model skipped twice unevaluated rather than rejected", async () => {
+    generateStructured.mockReset();
+    generateStructured.mockResolvedValueOnce({ items: [] });
+    generateStructured.mockResolvedValueOnce({ items: [] });
+    const judged = await judgeItems("project-1", "A form builder", [item]);
+    expect(judged).toEqual([]);
+  });
+
+  it("sends a judgement whose quote is not in the supplied text to review", async () => {
+    generateStructured.mockReset();
+    generateStructured.mockResolvedValueOnce({
+      items: [assessment({ needEvidence: { quote: "we have a budget of ten thousand" } })],
+    });
+    generateStructured.mockResolvedValueOnce({ items: [] });
+    const judged = await judgeItems("project-1", "A form builder", [item]);
+    expect(judged[0].decision).toBe("review");
+    expect(judged[0].reasonCodes).toContain("insufficient_evidence");
+  });
+});
+
+describe("body truncation", () => {
+  it("keeps the head and the tail, where the edit and the resolution live", () => {
+    const body = `${"a".repeat(BODY_CHAR_BUDGET)}Edit: solved, we bought one.`;
+    const kept = truncateBody(body);
+    expect(kept.startsWith("aaaa")).toBe(true);
+    expect(kept).toContain("Edit: solved, we bought one.");
+    expect(kept.length).toBeLessThan(body.length);
+  });
+
+  it("leaves a short body alone", () => {
+    expect(truncateBody("short")).toBe("short");
+  });
+});
+
+describe("triage", () => {
+  const candidates = [
+    { id: "a", title: "A", subreddit: "SaaS", author: null, score: null, ageHours: 1 },
+    { id: "b", title: "B", subreddit: "SaaS", author: null, score: null, ageHours: 1 },
+    { id: "c", title: "C", subreddit: "SaaS", author: null, score: null, ageHours: 1 },
+  ];
+
+  it("keeps the model's order and priority, and never rejects a candidate it skipped", async () => {
+    generateStructured.mockReset();
+    generateStructured.mockResolvedValueOnce({
+      items: [
+        { id: "c", disposition: "read", priority: "medium", reasonCode: "relevant_pain", reason: "c" },
+        { id: "b", disposition: "read", priority: "high", reasonCode: "explicit_ask", reason: "b" },
+      ],
+    });
+    const triage = await triageTitles("project-1", "A form builder", candidates);
+    expect(triage.map((one) => one.id)).toEqual(["c", "b", "a"]);
+    expect(triage[2].disposition).toBe("uncertain");
+    expect(readOrder(triage)).toEqual(["b", "c", "a"]);
+  });
+
+  it("reads the uncertain, never the rejected", () => {
+    const triage: TriageItem[] = [
+      { id: "a", disposition: "reject", priority: "high", reasonCode: "wrong_topic", reason: "a" },
+      { id: "b", disposition: "uncertain", priority: "low", reasonCode: "insufficient_context", reason: "b" },
+    ];
+    expect(readOrder(triage)).toEqual(["b"]);
   });
 });
 
@@ -45,7 +227,7 @@ describe("lead dedupe", () => {
   it("drops a post the project already judged", () => {
     const known = new Set([leadKey("abc", null)]);
     const kept = withoutKnownLeads(known, [{ postId: "abc" }, { postId: "def" }]);
-    expect(kept.map((item) => item.postId)).toEqual(["def"]);
+    expect(kept.map((entry) => entry.postId)).toEqual(["def"]);
   });
 
   it("keeps a comment on a post that is already a lead", () => {
@@ -70,69 +252,5 @@ describe("retention cutoff", () => {
     const now = new Date("2026-09-05T00:00:00Z");
     const days = (now.getTime() - retentionCutoff(now).getTime()) / (24 * 60 * 60 * 1000);
     expect(days).toBe(TIERS.free.feedWindowDays);
-  });
-});
-
-/**
- * A real scan scored this comment 63 and offered it as a lead. The commenter is
- * recommending a product, not looking for one, so it belongs on the seller side.
- */
-describe("scoring a recommendation", () => {
-  it("carries the seller-side verdict through to the lead", async () => {
-    generateStructured.mockResolvedValue({
-      items: [
-        {
-          id: "c_tally",
-          fit: 7,
-          intent: 6,
-          engagement: 6,
-          stage: "comparing",
-          reason: "Recommends a form builder to someone else, and wants nothing themselves.",
-          matchedPhrase: "Tally will cover all three of those easily",
-          sellerSide: true,
-        },
-      ],
-    });
-    const judged = await scoreItems("project-1", "A form builder", [
-      {
-        id: "c_tally",
-        title: "Looking for a form tool with logic, payments and webhooks",
-        subreddit: "SaaS",
-        body: "Tally will cover all three of those easily, and the free plan is generous.",
-      },
-    ]);
-    expect(judged).toHaveLength(1);
-    expect(judged[0].sellerSide).toBe(true);
-    expect(judged[0].score).toBe(foldScore(7, 6, 6));
-    expect(generateStructured.mock.calls[0][0].system).toBe(SCORER_SYSTEM);
-  });
-
-  it("tells the model that recommending a product is seller side", () => {
-    expect(SCORER_SYSTEM).toContain("recommending or defending a product they are not themselves");
-  });
-});
-
-/**
- * Measured on three real products (.context/reddit-leads-proof/scorer-pass.md):
- * of 12 posts that explicitly asked for a tool in the product's category, only 7
- * cleared the default threshold of 60. The scorer read "how close to spending
- * money" literally, so "what free budgeting app do you use" scored intent 3 and
- * the lead was thrown away. These two rules moved all 12 above the threshold.
- */
-describe("the intent rubric", () => {
-  it("scores an explicit ask for a tool at the top of the scale", () => {
-    expect(SCORER_SYSTEM).toContain(
-      "Score 8-10 when they are\n  asking for a tool, an alternative or a recommendation in this category",
-    );
-  });
-
-  it("does not let wanting a free one count as low intent", () => {
-    expect(SCORER_SYSTEM).toContain("Wanting a free or cheap one is a budget\n  fact about them");
-  });
-
-  it("judges fit on the person, not on how exactly the product matches the ask", () => {
-    expect(SCORER_SYSTEM).toContain(
-      "not whether the product covers every detail of the thing they asked for",
-    );
   });
 });

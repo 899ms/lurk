@@ -17,7 +17,8 @@ import { RETENTION_DAYS } from "@/lib/tiers";
 import { MIN_COMMENTS_FOR_THREAD, postReadCap } from "./constants";
 import { knownLeadKeys, leadKey, withoutKnownLeads, writeLeads, type LeadRow } from "./leads";
 import { loadScanProject, type ScanProject } from "./project";
-import { prefilterTitles, scoreItems, type Judgement, type ScorableItem } from "./score";
+import type { Judgement, ScorableItem } from "./judgement";
+import { judgeItems, readOrder, triageTitles } from "./score";
 
 const HOUR_MS = 60 * 60 * 1000;
 const RETENTION_MS = RETENTION_DAYS * 24 * HOUR_MS;
@@ -71,8 +72,12 @@ function toLead(project: ScanProject, judgement: Judgement, postId: string, comm
   };
 }
 
+/**
+ * Only a qualified judgement reaches the feed. The gates in gates.ts settled
+ * that; the project threshold is the user's own extra floor on top of it.
+ */
 function keepers(project: ScanProject, judgements: Judgement[]): Judgement[] {
-  return judgements.filter((item) => !item.sellerSide && item.score >= project.threshold);
+  return judgements.filter((item) => item.decision === "qualify" && item.score >= project.threshold);
 }
 
 async function scanComments(
@@ -101,13 +106,18 @@ async function scanComments(
         title: post.title,
         subreddit: post.subreddit,
         body: comment.body ?? "",
+        author: comment.author,
+        ageHours: (Date.now() - comment.createdAt.getTime()) / HOUR_MS,
+        upvotes: comment.score,
+        numComments: post.numComments,
+        parentBody: post.body ?? "",
       });
     }
   }
   if (items.length === 0) {
     return { rows: [], authors: [] };
   }
-  const judgements = await scoreItems(project.id, project.productText, items);
+  const judgements = await judgeItems(project.id, project.productText, items);
   const kept = keepers(project, judgements).filter((item) => parentOf.has(item.id));
   return {
     rows: kept.map((item) => toLead(project, item, parentOf.get(item.id) as string, item.id)),
@@ -130,7 +140,7 @@ async function fetchAvatars(ctx: FetchContext, usernames: string[]): Promise<voi
 }
 
 /**
- * One scan: list, prefilter on titles, read the shortlist in full, score, then
+ * One scan: list, triage the titles, read the shortlist in full, judge, then
  * buy comments only for the threads worth replying in.
  */
 export async function runScan(projectId: string, jobId: string): Promise<ScanOutcome> {
@@ -159,7 +169,7 @@ export async function runScan(projectId: string, jobId: string): Promise<ScanOut
   ).map((entry) => entry.post);
 
   await writeProgress(jobId, `Reading ${candidates.length} titles`);
-  const kept = await prefilterTitles(
+  const triage = await triageTitles(
     projectId,
     project.productText,
     candidates.map((post) => ({
@@ -172,8 +182,10 @@ export async function runScan(projectId: string, jobId: string): Promise<ScanOut
     })),
   );
   const cap = postReadCap(limits, tier);
-  const shortlist = candidates
-    .filter((post) => kept.has(post.id))
+  const byId = new Map(candidates.map((post) => [post.id, post]));
+  const shortlist = readOrder(triage)
+    .map((id) => byId.get(id))
+    .filter((post): post is StoredPost => post !== undefined)
     .slice(0, cap ?? candidates.length);
 
   await writeProgress(jobId, `Opening ${shortlist.length} posts`);
@@ -184,7 +196,7 @@ export async function runScan(projectId: string, jobId: string): Promise<ScanOut
   }
 
   await writeProgress(jobId, `Scoring ${full.length} posts`);
-  const judgements = await scoreItems(
+  const judgements = await judgeItems(
     projectId,
     project.productText,
     full.map((post) => ({
@@ -192,6 +204,11 @@ export async function runScan(projectId: string, jobId: string): Promise<ScanOut
       title: post.title,
       subreddit: post.subreddit,
       body: post.body ?? "",
+      author: post.author,
+      ageHours: (Date.now() - post.createdAt.getTime()) / HOUR_MS,
+      upvotes: post.score,
+      numComments: post.numComments,
+      parentBody: null,
     })),
   );
   const postLeads = keepers(project, judgements).map((item) => toLead(project, item, item.id, null));
