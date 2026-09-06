@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { digestSubject, renderDigestHtml, renderDigestText } from "@/lib/alerts/digest";
-import { payloadFor } from "@/lib/alerts/send";
+import { payloadFor, sendToChannel } from "@/lib/alerts/send";
+import { emailSender } from "@/lib/alerts/config";
 import {
   CADENCE_MS,
   CHAT_LEAD_CAP,
@@ -214,5 +215,64 @@ describe("the digest email", () => {
     const quiet = renderDigestHtml(digestOf([]));
     expect(quiet).toContain("Nothing new in the last 24 hours.");
     expect(renderDigestText(digestOf([]))).toContain("0 new leads for Acme");
+  });
+});
+
+describe("delivery", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  /** Stands in for the network so the request itself can be read. */
+  function captureRequest() {
+    const seen: { url: string; body: string }[] = [];
+    vi.stubGlobal("fetch", async (input: string | URL | Request, init?: RequestInit) => {
+      seen.push({ url: String(input), body: String(init?.body ?? "") });
+      return new Response(JSON.stringify({ id: "sent" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    return seen;
+  }
+
+  it("posts the digest as JSON to a generic webhook", async () => {
+    const seen = captureRequest();
+    await sendToChannel(
+      "webhook",
+      "https://example.com/hooks",
+      digestOf(selectLeads([lead({ id: "a" })], SINCE, null)),
+    );
+    expect(seen[0].url).toBe("https://example.com/hooks");
+    expect(JSON.parse(seen[0].body)).toMatchObject({ project: "Acme" });
+  });
+
+  it("hands Resend the from, the recipient, the subject and the html", async () => {
+    vi.stubEnv("RESEND_API_KEY", "re_test_key");
+    vi.stubEnv("ALERTS_FROM_EMAIL", "alerts@leads.example.com");
+    const seen = captureRequest();
+    await sendToChannel(
+      "email",
+      "you@company.com",
+      digestOf(selectLeads([lead({ id: "a" })], SINCE, null)),
+    );
+    const body = JSON.parse(seen[0].body);
+    expect(seen[0].url).toContain("/emails");
+    expect(body).toMatchObject({
+      from: "alerts@leads.example.com",
+      to: "you@company.com",
+      subject: "1 new lead for Acme",
+    });
+    expect(body.html).toContain("1 new lead for Acme in the last 24 hours.");
+  });
+
+  it("reads a blank variable as an unset one and says what is missing", async () => {
+    vi.stubEnv("RESEND_API_KEY", "");
+    vi.stubEnv("ALERTS_FROM_EMAIL", "");
+    expect(emailSender()).toBeNull();
+    await expect(sendToChannel("email", "you@company.com", digestOf([]))).rejects.toThrow(
+      "Email alerts need RESEND_API_KEY and ALERTS_FROM_EMAIL",
+    );
   });
 });

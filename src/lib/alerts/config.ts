@@ -5,10 +5,13 @@ import { z } from "zod";
  * app-wide schema; `ALERTS_FROM_EMAIL` is new and belongs beside it once the
  * owner of `src/lib/config.ts` folds these two in.
  */
+/** An unset variable and one set to nothing mean the same thing in a .env file. */
+const blankIsAbsent = (value: unknown) => (value === "" ? undefined : value);
+
 const schema = z.object({
-  RESEND_API_KEY: z.string().min(1).optional(),
-  ALERTS_FROM_EMAIL: z.email().optional(),
-  APP_URL: z.url().default("http://localhost:3000"),
+  RESEND_API_KEY: z.preprocess(blankIsAbsent, z.string().optional()),
+  ALERTS_FROM_EMAIL: z.preprocess(blankIsAbsent, z.email().optional()),
+  APP_URL: z.preprocess(blankIsAbsent, z.url().default("http://localhost:3000")),
 });
 
 export type AlertsConfig = z.infer<typeof schema>;
