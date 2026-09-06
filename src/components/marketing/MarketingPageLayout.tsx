@@ -5,7 +5,7 @@ import { MarketingShowcase } from "./MarketingShowcase";
 import { MarketingFeatures } from "./MarketingFeatures";
 import { MotionPanel } from "./MotionPanel";
 import { CtaRow } from "./CtaRow";
-import { BrandWord } from "./BrandWord";
+import { BrandStack, BrandWord } from "./BrandWord";
 import type { Variant } from "./VariantSwitcher";
 import "./marketing.css";
 import "./below-fold.css";
@@ -26,14 +26,17 @@ export function MarketingPageLayout({ variant }: { variant: Variant }) {
               <ArrowUpRight />
             </a>
             <h1 id="marketing-title">
-              Someone on{" "}
-              <BrandWord name="Reddit" />
-              <br className="hero-break" /> is looking for what you sell.
+              Get your site into <BrandWord name="Google" />
+              <br className="hero-break" /> and <BrandStack /> AI answers. Free.
             </h1>
             <div className="hero-description">
-              <p>Find the post. Understand the intent. Write a useful reply.</p>
               <p>
-                Free on the hosted app, free to self-host. No card, no subscription.
+                <BrandWord name="Reddit" /> threads rank on Google and get cited by ChatGPT,
+                Perplexity and AI Overviews.
+              </p>
+              <p>
+                lurk finds the threads about what you sell, scores who is asking, and drafts
+                your reply. We do the finding for free. You post.
               </p>
             </div>
             <CtaRow />

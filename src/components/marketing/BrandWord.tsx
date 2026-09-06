@@ -12,6 +12,19 @@ export const BRAND_MARKS = {
 } as const;
 export type BrandName = keyof typeof BRAND_MARKS;
 
+const ANSWER_ENGINES: BrandName[] = ["Google AI Overviews", "ChatGPT", "Perplexity"];
+
+/** The three answer engines as one overlapping cluster, for "AI answers" in a heading. */
+export function BrandStack() {
+  return (
+    <span className="brand-stack" aria-label="Google AI Overviews, ChatGPT and Perplexity">
+      {ANSWER_ENGINES.map((name) => (
+        <BrandImage key={name} name={name} src={BRAND_MARKS[name]} />
+      ))}
+    </span>
+  );
+}
+
 /** A platform named in running text always carries its mark. */
 export function BrandWord({ name, label }: { name: BrandName; label?: string }) {
   return (

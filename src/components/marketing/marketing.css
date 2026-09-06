@@ -30,6 +30,9 @@
 .brand-word { display: inline-flex; align-items: center; gap: 0.3em; white-space: nowrap; vertical-align: baseline; }
 .brand-word .brand-image { width: 0.8em; height: 0.8em; }
 .hero-layout h1 .brand-word { gap: 9px; }
+.brand-stack { display: inline-flex; align-items: center; vertical-align: baseline; margin-right: 0.15em; }
+.brand-stack .brand-image { width: 0.62em; height: 0.62em; padding: 0.08em; border-radius: 50%; background: var(--surface); box-shadow: 0 0 0 1px var(--m-outline); }
+.brand-stack .brand-image + .brand-image { margin-left: -0.22em; }
 .hero-layout h1 .brand-word .brand-image { width: 0.75em; height: 0.75em; }
 .hero-description { max-width: 590px; margin: 20px auto; font-size: 15px; line-height: 1.55; color: var(--fg-muted); }
 .hero-description p:first-child { color: var(--fg); }

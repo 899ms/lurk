@@ -12,7 +12,7 @@ const TABS = [
 ];
 
 export function MarketingShowcase() {
-  const [tab, setTab] = useState("leads");
+  const [tab, setTab] = useState("seo");
   return (
     <div className="marketing-showcase">
       <PillTabs tabs={TABS} activeId={tab} onSelect={setTab} />
