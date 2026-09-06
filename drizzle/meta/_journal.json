@@ -50,6 +50,13 @@
       "when": 1788685906507,
       "tag": "0006_null_prerubric_scales",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1788688918323,
+      "tag": "0007_redecide_held_verdicts",
+      "breakpoints": true
     }
   ]
 }
