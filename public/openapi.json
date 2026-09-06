@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Reddit Leads API",
+    "title": "lurk API",
     "version": "1.0.0",
     "description": "Read-only access to scored Reddit buyer-intent leads. Leads are scored output over Reddit posts and comments bought per call from AnyAPI, not raw Reddit access. The score is a sort order for a human's attention, not a probability that the person will buy. Reading this API is free: every response carries X-Request-Cost-Usd: 0.",
     "license": { "name": "MIT", "identifier": "MIT" }

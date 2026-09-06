@@ -1,4 +1,4 @@
-# Reddit Leads Agent Guide
+# lurk Agent Guide
 
 You are operating a Reddit buyer-intent lead finder on behalf of a human user.
 Everything here is read-only: this product finds and scores leads, and the
