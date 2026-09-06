@@ -1,7 +1,8 @@
 import { StatCard } from "@/components/StatCard";
+import { lastRunJob } from "@/jobs/enqueue";
 import { requireLocalUser } from "@/lib/auth";
 import { listProjects } from "@/lib/projects";
-import { usageToday } from "@/lib/usage";
+import { usageSince, usageToday } from "@/lib/usage";
 
 type UsagePageProps = { searchParams: Promise<{ project?: string }> };
 
@@ -11,6 +12,8 @@ export default async function UsagePage({ searchParams }: UsagePageProps) {
   const requested = (await searchParams).project;
   const active = projects.find((project) => project.id === requested) ?? projects[0];
   const usage = await usageToday(active ? [active.id] : []);
+  const job = active ? await lastRunJob("scan", active.id) : null;
+  const scan = active && job?.startedAt ? await usageSince(active.id, job.startedAt) : null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -32,6 +35,35 @@ export default async function UsagePage({ searchParams }: UsagePageProps) {
         />
         <StatCard label="Fetched" value={String(usage.fetched)} caption="Paid AnyAPI calls" />
         <StatCard label="Reused" value={String(usage.reused)} caption="Answered from stored data" />
+      </div>
+      <div className="flex flex-col gap-3">
+        <h2 className="text-h3" style={{ fontWeight: 500 }}>
+          Last scan
+        </h2>
+        {scan ? (
+          <div className="grid gap-4 md:grid-cols-4">
+            <StatCard label="Calls" value={String(scan.calls)} caption="AnyAPI requests" />
+            <StatCard
+              label="USD"
+              value={`$${scan.costUsd.toFixed(4)}`}
+              caption="Billed to this project"
+            />
+            <StatCard
+              label="Reused"
+              value={String(scan.reused)}
+              caption="Answered from stored data"
+            />
+            <StatCard
+              label="Language model USD"
+              value={`$${scan.llmCostUsd.toFixed(4)}`}
+              caption="Scoring and reading"
+            />
+          </div>
+        ) : (
+          <p className="text-body text-fg-muted">
+            No scan has run for this project yet, so there is nothing to show here.
+          </p>
+        )}
       </div>
       <div className="rounded-card border bg-surface">
         <table className="w-full text-body">

@@ -2,13 +2,14 @@ import { Header } from "@/components/Header";
 import { ProjectSwitcher } from "@/components/ProjectSwitcher";
 import { Rail, type RailGroup } from "@/components/Rail";
 import { requireLocalUser } from "@/lib/auth";
+import { newLeadCount } from "@/lib/leads";
 import { listProjects } from "@/lib/projects";
 
-const GROUPS: RailGroup[] = [
+const groupsFor = (newLeads: number): RailGroup[] => [
   {
     label: "Engage",
     items: [
-      { href: "/app/leads", label: "Leads", count: 0 },
+      { href: "/app/leads", label: "Leads", count: newLeads },
       { href: "/app/seo", label: "Reddit SEO", count: 0 },
     ],
   },
@@ -32,11 +33,13 @@ const GROUPS: RailGroup[] = [
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireLocalUser();
   const projects = await listProjects(user.id);
+  const project = projects[0];
+  const newLeads = project ? await newLeadCount(project.id) : 0;
   return (
     <div className="flex min-h-dvh flex-col">
       <Header />
       <div className="flex flex-1">
-        <Rail groups={GROUPS}>
+        <Rail groups={groupsFor(newLeads)}>
           <ProjectSwitcher
             projects={projects.map((project) => ({ id: project.id, name: project.name }))}
             defaultId={projects[0]?.id ?? null}
