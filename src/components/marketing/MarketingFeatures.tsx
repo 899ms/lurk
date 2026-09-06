@@ -1,25 +1,19 @@
 import { MarketingPeople } from "./MarketingPeople";
-import { OpenSourceBlock } from "./OpenSourceBlock";
-import { MarketingScanStory } from "./MarketingScanStory";
-import { MarketingSeoStory } from "./MarketingSeoStory";
-import { MarketingIntentSections } from "./MarketingIntentSections";
-import { MarketingAlerts } from "./MarketingAlerts";
-import { MarketingResearchSections } from "./MarketingResearchSections";
 import { MarketingCostTable } from "./MarketingCostTable";
-import { MarketingApiPanel } from "./MarketingApiPanel";
+import { MarketingScanCollage } from "./MarketingScanCollage";
+import { MarketingSeoTiles } from "./MarketingSeoTiles";
+import { OpenSourcePanel } from "./OpenSourcePanel";
+import { MarketingDecisionTiles } from "./MarketingDecisionTiles";
 
 export function MarketingFeatures() {
   return (
     <>
       <MarketingPeople />
-      <OpenSourceBlock />
-      <MarketingScanStory />
-      <MarketingSeoStory />
-      <MarketingIntentSections />
-      <MarketingAlerts />
-      <MarketingResearchSections />
       <MarketingCostTable />
-      <MarketingApiPanel />
+      <MarketingScanCollage />
+      <MarketingSeoTiles />
+      <OpenSourcePanel />
+      <MarketingDecisionTiles />
     </>
   );
 }

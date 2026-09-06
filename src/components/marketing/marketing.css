@@ -133,4 +133,5 @@
   .marketing-hero { height: 760px; }
   .marketing-c .product-mat { transform: translateX(-70px); }
 }
-@media (prefers-reduced-motion: reduce) { .marketing a, .marketing button { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .marketing a, .marketing button { transition: none; }
+}

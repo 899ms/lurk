@@ -228,14 +228,3 @@ export const SCAN_LEAD: MockLead = {
   costUsd: 0.0012,
   sku: "reddit.search",
 };
-export const MENTION_THREAD: MockThread = {
-  author: "usbetween",
-  avatar:
-    "https://www.redditstatic.com/avatars/defaults/v2/avatar_default_1.png",
-  subreddit: "historyteachers",
-  subredditIcon:
-    "https://styles.redditmedia.com/t5_2t7s5/styles/communityIcon_uhvihcc9s3hd1.JPG?width=64&frame=1&auto=webp&s=af1b192a6e521253631a126c12ce40b279217821",
-  title: "TypeWriter",
-  url: "https://www.reddit.com/r/historyteachers/comments/1w8i8xd/typewriter/",
-  body: "Says TypeWriter is a much better assessment builder and testing experience than google forms.",
-};

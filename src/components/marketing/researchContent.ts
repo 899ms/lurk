@@ -1,6 +1,6 @@
 /** Saved SEO/insights/competitor records from read-only Postgres, Round 3.
  * Ages are at the saved observation, not a claim of current Google rankings.
- * Repo tree generated from git ls-files, top two levels; no untracked secrets. */
+ */
 export const SEO_THREADS = [
   {
     keyword: "Typeform alternatives",
@@ -33,19 +33,6 @@ export const SEO_THREADS = [
     domain: "typeform.com",
   },
 ];
-export const SCAN_MISSES = [
-  {
-    id: "1w8fxcc",
-    title:
-      "Sanity check for beginner: Budget Dual RTX 3060 12GB build for Qwen 3.8",
-    subreddit: "selfhosted",
-  },
-  {
-    id: "1w8bcly",
-    title: "Meals I enjoy and usually make weekly to keep on budget",
-    subreddit: "Frugal",
-  },
-];
 export const SAVED_THEMES = [
   {
     label: "Simpler Alternative To Jotform",
@@ -72,6 +59,4 @@ export const MENTION_TALLY = {
     { name: "Google Forms", domain: "forms.google.com", mentions: 7 },
   ],
 };
-export const REPO_TREE =
-  ".dockerignore\n.env.example\n.github/\n  workflows/\n.gitignore\nDockerfile\nLICENSE\nREADME.md\ncomponents.json\ndocker-compose.yml\ndocker-entrypoint.sh\ndrizzle/\n  0000_vengeful_wallow.sql\n  0001_overconfident_goliath.sql\n  0002_handy_cable.sql\n  0003_nosy_jamie_braddock.sql\n  0004_sudden_kitty_pryde.sql\n  meta/\ndrizzle.config.ts\neslint.config.mjs\nnext.config.ts\npackage-lock.json\npackage.json\npostcss.config.mjs\npublic/\n  agent-guide.md\n  anyapi-mark.svg\n  brands/\n  openapi.json\nscripts/\n  azure-github-oidc.sh\n  azure-provision.sh\n  register-oauth-client.ts\n  write-brand-marks.mjs\nsrc/\n  app/\n  components/\n  db/\n  instrumentation.ts\n  jobs/\n  lib/\n  proxy.ts\n  styles/\ntests/\n  alerts.test.ts\n  api.test.ts\n  competitors.test.ts\n  crypto.test.ts\n  drafts.test.ts\n  fetchShared.test.ts\n  insights.test.ts\n  oauth.test.ts\n  scan.test.ts\n  seo.test.ts\n  tiers.test.ts\ntsconfig.json\nvitest.config.ts";
 export const REPO_URL = "https://github.com/getanyapi-com/lurk";

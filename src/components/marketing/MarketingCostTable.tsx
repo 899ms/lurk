@@ -1,6 +1,5 @@
 "use client";
 import { motion, useReducedMotion } from "motion/react";
-import { WalletConsent } from "./WalletConsent";
 import { useState } from "react";
 import { limitsFor, type TierName } from "@/lib/tiers";
 import { BrandImage } from "./BrandImage";
@@ -123,7 +122,7 @@ export function MarketingCostTable() {
           {choice === "free"
             ? "Start on the house wallet, within the hosted free limits."
             : choice === "connected"
-              ? "Your AnyAPI wallet buys freshness and breadth. Pay per call."
+              ? "Connect through AnyAPI, set the spend cap there, and pay per call. Disconnecting revokes it."
               : "Run the MIT source yourself. App tier limits are removed."}
         </p>
         <dl>
@@ -140,7 +139,6 @@ export function MarketingCostTable() {
             : "Configure Docker, Postgres, Clerk, AnyAPI and OpenRouter. Model usage is billed separately."}
         </small>
       </div>
-      <WalletConsent />
     </section>
   );
 }
