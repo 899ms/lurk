@@ -1,11 +1,12 @@
 import Link from "next/link";
+import { PRODUCT_NAME } from "@/lib/brand";
 import { Wordmark } from "@/components/Wordmark";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
 export function MarketingNav() {
   return (
     <header className="marketing-nav">
-      <Link href="/" aria-label="Reddit Leads home">
+      <Link href="/" aria-label={`${PRODUCT_NAME} home`}>
         <Wordmark />
       </Link>
       <nav aria-label="Main navigation">
