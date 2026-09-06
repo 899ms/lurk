@@ -45,14 +45,15 @@
 }
 .collage {
   position: relative;
-  height: 470px;
+  height: 540px;
   overflow: hidden;
   margin-inline: 48px;
 }
 .collage-ask {
   position: absolute;
-  left: 176px;
+  left: 12%;
   top: 0;
+  max-width: 36%;
   z-index: 3;
   display: flex;
   align-items: center;
@@ -81,10 +82,9 @@
 }
 .collage-window {
   position: absolute;
-  left: 50%;
+  left: 18%;
   top: 84px;
-  width: 720px;
-  margin-left: -340px;
+  width: 56%;
   z-index: 1;
 }
 .collage-window .mock-frame {
@@ -93,10 +93,10 @@
 }
 .collage-card {
   position: absolute;
-  right: 48px;
-  top: 32px;
+  right: 3%;
+  top: 96px;
   z-index: 2;
-  width: 620px;
+  width: min(620px, 50%);
   display: flex;
   gap: 16px;
   padding: 18px;
@@ -519,11 +519,11 @@
   .collage-window {
     width: 92%;
     left: 4%;
-    margin-left: 0;
     top: 84px;
   }
   .collage-ask {
     left: 16px;
+    max-width: 70%;
   }
   .collage-card {
     right: 16px;
@@ -532,5 +532,77 @@
   }
   .four-up {
     grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* Free section: the Aside benchmark chart, entry plan per month with each tool's mark. */
+.plan-chart {
+  max-width: 958px;
+  margin: 0 auto;
+}
+.plan-row {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr) 96px;
+  align-items: center;
+  gap: 16px;
+  min-height: 60px;
+  border-bottom: 1px solid var(--m-rule);
+}
+.plan-name {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  column-gap: 12px;
+  align-items: center;
+  font-size: 14px;
+  font-weight: 500;
+}
+.plan-name small {
+  grid-column: 2;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--fg-muted);
+}
+.plan-track {
+  display: flex;
+  align-items: center;
+  height: 60px;
+}
+.plan-bar {
+  height: 24px;
+  border-radius: 6px;
+  background: var(--m-bar);
+  transform-origin: left;
+}
+.plan-bar.accent {
+  background: var(--m-bar-accent);
+}
+.plan-value {
+  text-align: right;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.plan-note {
+  display: block;
+  padding-top: 12px;
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+@media (max-width: 900px) {
+  .plan-chart {
+    margin-inline: 24px;
+  }
+  .plan-row {
+    grid-template-columns: minmax(0, 1fr) 72px;
+    row-gap: 4px;
+    padding-block: 10px;
+  }
+  .plan-name {
+    grid-column: 1 / -1;
+  }
+  .plan-track {
+    height: 24px;
+  }
+  .plan-bar {
+    height: 16px;
   }
 }

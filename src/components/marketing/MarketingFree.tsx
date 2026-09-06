@@ -1,6 +1,9 @@
 "use client";
 import { useState } from "react";
+import { motion, useReducedMotion } from "motion/react";
 import { limitsFor, type TierName } from "@/lib/tiers";
+import { BrandImage } from "./BrandImage";
+import { MONTHLY_PLANS, PRICING_OBSERVED } from "./pricingContent";
 
 const OPTIONS = [
   { id: "free", label: "Hosted free" },
@@ -11,7 +14,10 @@ type Choice = (typeof OPTIONS)[number]["id"];
 const count = (value: number | null | undefined) =>
   value == null ? "No app limit" : value.toLocaleString("en-US");
 
+const MAX_USD = Math.max(...MONTHLY_PLANS.map((plan) => plan.usd));
+
 export function MarketingFree() {
+  const reduced = useReducedMotion();
   const [choice, setChoice] = useState<Choice>("free");
   const limits = limitsFor(
     choice === "self-host" ? "free" : (choice as TierName),
@@ -46,6 +52,38 @@ export function MarketingFree() {
           own wallet for more, or self-host the MIT source with no app limits at all.
         </p>
       </header>
+      <div className="plan-chart" role="table" aria-label="Entry plan per month">
+        {MONTHLY_PLANS.map((plan) => (
+          <div role="row" className="plan-row" key={plan.name}>
+            <span role="cell" className="plan-name">
+              <BrandImage
+                name={plan.name}
+                src={"mark" in plan ? plan.mark : undefined}
+                domain={plan.domain}
+                size={22}
+              />
+              {plan.name}
+              <small>{plan.note}</small>
+            </span>
+            <span role="cell" className="plan-track">
+              <motion.span
+                className={plan.name === "lurk" ? "plan-bar accent" : "plan-bar"}
+                initial={reduced ? false : { scaleX: 0 }}
+                whileInView={{ scaleX: 1 }}
+                viewport={{ once: true }}
+                transition={{ duration: reduced ? 0 : 0.6, ease: "easeOut" }}
+                style={{ width: `${Math.max((plan.usd / MAX_USD) * 100, 2)}%` }}
+              />
+            </span>
+            <span role="cell" className="plan-value">
+              {plan.usd === 0 ? "Free" : `$${plan.usd}/mo`}
+            </span>
+          </div>
+        ))}
+        <small className="plan-note">
+          Entry plan, monthly billing, as published on {PRICING_OBSERVED}.
+        </small>
+      </div>
       <div
         className="tier-selector"
         role="tablist"
