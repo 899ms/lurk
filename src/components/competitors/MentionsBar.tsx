@@ -3,7 +3,8 @@ import type { MentionSeries } from "@/lib/competitors/read";
 
 type MentionsBarProps = { series: MentionSeries[] };
 
-const MIN_BAR_PERCENT = 6;
+/** A day with no mention still draws a hairline, so the axis stays readable. */
+const EMPTY_BAR_PERCENT = 4;
 
 /** One row of daily bars per competitor, all rows sharing one scale. */
 export function MentionsBar({ series }: MentionsBarProps) {
@@ -24,15 +25,15 @@ export function MentionsBar({ series }: MentionsBarProps) {
               {row.total} {row.total === 1 ? "mention" : "mentions"}
             </span>
           </div>
-          <div className="flex h-14 items-end gap-1">
+          <div className="flex h-12 items-end justify-between gap-1.5">
             {row.days.map((value, index) => (
               <span
                 key={index}
                 title={`${value} on day ${index + 1}`}
-                className="flex-1 rounded-t-sm bg-surface-2"
+                className="max-w-3 flex-1 rounded-t-sm"
                 style={{
-                  height: `${value === 0 ? MIN_BAR_PERCENT : Math.max(MIN_BAR_PERCENT, (value / peak) * 100)}%`,
-                  backgroundColor: value === 0 ? undefined : "var(--fg)",
+                  height: `${value === 0 ? EMPTY_BAR_PERCENT : Math.max(12, (value / peak) * 100)}%`,
+                  backgroundColor: value === 0 ? "var(--border)" : "var(--fg)",
                 }}
               />
             ))}
