@@ -4,11 +4,21 @@ import "@fontsource-variable/instrument-sans";
 import "@fontsource-variable/jetbrains-mono";
 import "./globals.css";
 import { ThemeScript } from "@/components/ThemeScript";
-import { PRODUCT_NAME } from "@/lib/brand";
+import { PRODUCT_NAME_WITH_PROVIDER, PRODUCT_URL } from "@/lib/brand";
+
+const DESCRIPTION = "Find Reddit buyer intent and see what every lead's data cost.";
 
 export const metadata: Metadata = {
-  title: `${PRODUCT_NAME} by AnyAPI`,
-  description: "Find Reddit buyer intent and see what every lead's data cost.",
+  metadataBase: new URL(PRODUCT_URL),
+  title: PRODUCT_NAME_WITH_PROVIDER,
+  description: DESCRIPTION,
+  openGraph: {
+    title: PRODUCT_NAME_WITH_PROVIDER,
+    description: DESCRIPTION,
+    url: PRODUCT_URL,
+    siteName: PRODUCT_NAME_WITH_PROVIDER,
+    type: "website",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

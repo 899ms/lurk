@@ -1,4 +1,4 @@
-import { PRODUCT_NAME } from "@/lib/brand";
+import { PRODUCT_NAME, PRODUCT_NAME_WITH_PROVIDER } from "@/lib/brand";
 import { shortAge } from "@/lib/format";
 import {
   avatarHtml,
@@ -120,7 +120,8 @@ ${reason}${phrase}</td>
 function footerRow(digest: Digest): string {
   return `<tr><td style="padding:8px 24px 28px;font-family:${EMAIL_FONT};font-size:12px;color:${C.fgMuted}">
 <a href="${escapeHtml(digest.appUrl)}/app/leads" style="color:${C.fgMuted}">Open the feed</a> &middot;
-<a href="${escapeHtml(digest.appUrl)}/app/settings/alerts" style="color:${C.fgMuted}">Alert settings</a></td></tr>`;
+<a href="${escapeHtml(digest.appUrl)}/app/settings/alerts" style="color:${C.fgMuted}">Alert settings</a>
+&middot; ${escapeHtml(PRODUCT_NAME_WITH_PROVIDER)}</td></tr>`;
 }
 
 function emptyRow(digest: Digest): string {

@@ -1,9 +1,9 @@
-# Reddit Leads
+# lurk
 
-A Reddit buyer-intent finder you can self-host for free. It watches the subreddits and
-keywords your buyers use, scores every post and comment against your product, tells you in
-one sentence why each one scored what it did, and shows what the data behind that lead cost,
-down to the request.
+lurk is a Reddit buyer-intent finder you can self-host for free, hosted at
+<https://lurk.so>. It watches the subreddits and keywords your buyers use, scores every post
+and comment against your product, tells you in one sentence why each one scored what it did,
+and shows what the data behind that lead cost, down to the request.
 
 Data comes from [AnyAPI](https://getanyapi.com): one key, pay per request in USD, no
 subscription. "Premium" here means connecting your own AnyAPI wallet, not paying us a monthly
@@ -50,8 +50,8 @@ You need Docker, a free [Clerk](https://clerk.com) application for sign-in, an
 [AnyAPI](https://getanyapi.com) key and an [OpenRouter](https://openrouter.ai) key.
 
 ```bash
-git clone <repo> reddit-leads
-cd reddit-leads
+git clone <repo> lurk
+cd lurk
 cp .env.example .env
 node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"   # APP_ENCRYPTION_KEY
 ```

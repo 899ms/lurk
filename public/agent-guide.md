@@ -1,8 +1,8 @@
-# Reddit Leads Agent Guide
+# lurk Agent Guide
 
-You are operating a Reddit buyer-intent lead finder on behalf of a human user.
-Everything here is read-only: this product finds and scores leads, and the
-person decides what to do about them.
+You are operating lurk by AnyAPI, a Reddit buyer-intent lead finder, on behalf
+of a human user. Everything here is read-only: this product finds and scores
+leads, and the person decides what to do about them.
 
 The API lives on the same origin you fetched this file from, under `/api/v1`.
 The examples below call it `$BASE`, so set `BASE=https://<this instance>/api/v1`.
@@ -106,7 +106,7 @@ with the same Bearer key:
 
     {
       "mcpServers": {
-        "reddit-leads": {
+        "lurk": {
           "url": "https://<this instance>/api/mcp",
           "headers": { "Authorization": "Bearer rl_sk_..." }
         }

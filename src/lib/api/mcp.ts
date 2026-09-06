@@ -1,5 +1,6 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import { PRODUCT_NAME, PRODUCT_NAME_WITH_PROVIDER } from "@/lib/brand";
 import type { ApiCaller } from "./auth";
 import { callTool, TOOLS } from "./mcpTools";
 import { ApiError } from "./responses";
@@ -10,7 +11,11 @@ import { ApiError } from "./responses";
  */
 export function mcpServerFor(caller: ApiCaller): Server {
   const server = new Server(
-    { name: "reddit-leads", version: "1.0.0" },
+    {
+      name: PRODUCT_NAME,
+      version: "1.0.0",
+      description: `${PRODUCT_NAME_WITH_PROVIDER}: read-only access to scored Reddit buyer-intent leads.`,
+    },
     { capabilities: { tools: {} } },
   );
 
