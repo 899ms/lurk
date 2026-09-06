@@ -73,7 +73,7 @@ export function MarketingVariantB() {
           ))}
         </div>
         <p className="max-w-3xl text-body text-fg-muted">
-          That is a real week of scanning, at catalog prices, from your own wallet. A daily scan of
+          That is a sample week of scanning, at catalog prices, from your own wallet. A daily scan of
           a 25 keyword project costs cents a day. Nothing else in the category will show you this
           number, because the number is the argument.
         </p>
