@@ -32,25 +32,6 @@
 .thread-identity .text-mono {
   font-size: 10px;
 }
-.open-source-block .eyebrow-link {
-  margin-bottom: 20px;
-  text-decoration: none;
-}
-.source-browser > .fragment-title,
-.source-terminal > .fragment-title {
-  padding: 18px 22px;
-  border-bottom: 1px solid var(--m-rule);
-}
-.source-terminal .fragment-title {
-  border-color: var(--m-night-line);
-}
-.source-terminal .fragment-title > span {
-  font-size: 10px;
-  color: var(--m-night-muted);
-}
-.scan-verdict .fragment-title > span {
-  margin-left: auto;
-}
 .google-query {
   display: flex;
   align-items: center;
@@ -62,52 +43,12 @@
 .google-query > span {
   flex: 1;
 }
-.seo-data-row .text-mono {
-  font-size: 9px;
-}
-.delivery-channels .brand-image,
-.delivery-bubble > .fragment-title .brand-image {
-  background: var(--m-brand-paper);
-  padding: 3px;
-  box-sizing: content-box;
-  border-radius: var(--radius-control);
-}
-.delivery-bubble > .fragment-title > span {
-  color: var(--fg-muted);
-  font-size: 10px;
-}
-.marketing .theme-evidence h3 {
-  font-size: 17px;
-  line-height: 23px;
-  margin-bottom: 10px;
-}
-.marketing .mention-lede {
-  color: var(--fg);
-}
-.marketing .consent-preview h3 {
-  font-size: 20px;
-}
-.price-bar {
-  transform-origin: left;
-}
-@media (max-width: 760px) {
-  .delivery-channels svg,
-  .delivery-channels .brand-image {
-    width: 16px;
-    height: 16px;
-  }
-}
 @media (prefers-reduced-motion: reduce) {
   .marketing-hero::before,
   .marketing-hero::after {
     animation: none !important;
   }
   .mock-timeline .avatar-stack > span {
-    opacity: 1 !important;
-    transform: none !important;
-  }
-  .price-bar,
-  .delivery-bubble {
     opacity: 1 !important;
     transform: none !important;
   }

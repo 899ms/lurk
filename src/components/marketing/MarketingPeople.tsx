@@ -1,12 +1,12 @@
 import { PRODUCT_NAME } from "@/lib/brand";
 import { AppMockLeads } from "./AppMockLeads";
 import { AppMockSeo } from "./AppMockSeo";
-import { AppMockUsage } from "./AppMockUsage";
+import { AppMockDrafts } from "./AppMockDrafts";
 import { EyebrowLink } from "./EyebrowLink";
 import { PeopleWall } from "./PeopleWall";
 import { PEOPLE_CARDS } from "./peopleContent";
 
-const SHOTS = { leads: AppMockLeads, seo: AppMockSeo, usage: AppMockUsage } as const;
+const SHOTS = { leads: AppMockLeads, seo: AppMockSeo, drafts: AppMockDrafts } as const;
 
 /** The people behind the leads, then three small windows into the product. */
 export function MarketingPeople() {
@@ -23,8 +23,8 @@ export function MarketingPeople() {
       <PeopleWall />
       <p className="people-intro">
         Unlike a keyword alert, {PRODUCT_NAME} reads the whole post and the community
-        rules before it calls something a lead. You see who asked, why it matched,
-        and what the data cost - then you decide whether to join the conversation.
+        rules before it calls something a lead. You see who asked, why it matched, and
+        what the community allows - then you decide whether to join the conversation.
       </p>
       <div className="three-up people-cards">
         {PEOPLE_CARDS.map((card) => {

@@ -6,7 +6,7 @@ export function CtaRow({ className }: { className?: string }) {
   return (
     <div className={cn("cta-row", className)}>
       <Link className="marketing-button" href="/sign-up">
-        Find your first lead
+        Find your first lead, free
         <ArrowUpRight />
       </Link>
       <a className="marketing-button secondary" href="#self-host">

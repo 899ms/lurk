@@ -28,8 +28,6 @@ export type MockLead = {
   body: string;
   matchedPhrase: string;
   promoRule: string;
-  costUsd: number;
-  sku: string;
   kind: string;
 };
 
@@ -52,8 +50,6 @@ export const MOCK_LEADS: MockLead[] = [
     matchedPhrase:
       "Looking for a Jotform alternative that's more focused on surveys/feedback",
     promoRule: "No blatant self-promotion; contribute value",
-    costUsd: 0.0012,
-    sku: "reddit.search",
     kind: "Post",
   },
   {
@@ -73,8 +69,6 @@ export const MOCK_LEADS: MockLead[] = [
     body: "I'm actually looking for an alternative too",
     matchedPhrase: "I'm actually looking for an alternative too",
     promoRule: "No blatant self-promotion; contribute value",
-    costUsd: 0.0012,
-    sku: "reddit.search",
     kind: "Comment",
   },
 ];
@@ -128,20 +122,6 @@ export const MOCK_SEO = [
 export const MOCK_DRAFT =
   "Which decision do you want your budget to help with first: what is safe to spend, which category is drifting, or what to change next month? That would help narrow down the kind of tool you need.";
 
-export const MOCK_USAGE_ROWS = [
-  { api: "reddit.search", purpose: "Find matching threads", cost: "$0.0012" },
-  { api: "reddit.post", purpose: "Read a full post", cost: "$0.0012" },
-  {
-    api: "reddit.post_comments",
-    purpose: "Read the conversation",
-    cost: "$0.0020",
-  },
-  {
-    api: "google.search",
-    purpose: "Find ranking Reddit threads",
-    cost: "$0.0009",
-  },
-];
 
 export const MOCK_RAIL: {
   label: string;
@@ -225,6 +205,13 @@ export const SCAN_LEAD: MockLead = {
   promoRule: "Community policy unavailable. Read the current rules.",
   age: "Saved example",
   kind: "Post",
-  costUsd: 0.0012,
-  sku: "reddit.search",
+};
+/** The same post's saved scoring parts and Reddit counts, read from the database on 2026-09-06. */
+export const SCAN_LEAD_FACTS = {
+  fit: 8,
+  intent: 7,
+  engagement: 8,
+  points: 6,
+  comments: 27,
+  age: "Sep 1",
 };

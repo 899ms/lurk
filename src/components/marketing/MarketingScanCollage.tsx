@@ -1,12 +1,20 @@
 "use client";
 import { motion, useReducedMotion } from "motion/react";
-import { Search } from "lucide-react";
+import { ArrowUp, Copy, ExternalLink, EyeOff, MessageCircle, PenLine, Search, ShieldCheck, ThumbsDown } from "lucide-react";
+import { AuthorAvatar } from "@/components/AuthorAvatar";
 import { ScoreBadge } from "@/components/ScoreBadge";
 import { AppMockLeads } from "./AppMockLeads";
-import { SCAN_LEAD } from "./mockContent";
-import { ThreadIdentity } from "./ThreadIdentity";
+import { SCAN_LEAD, SCAN_LEAD_FACTS } from "./mockContent";
 
-/** A search, the product window behind it, and the verdict card in front: the Aside memory collage. */
+const ACTIONS = [
+  ["Open on Reddit", ExternalLink],
+  ["Draft a reply", PenLine],
+  ["Copy title", Copy],
+  ["Hide", EyeOff],
+  ["Not a fit", ThumbsDown],
+] as const;
+
+/** A search, the product window behind it, and the lead card in front: the Aside memory collage. */
 export function MarketingScanCollage() {
   const reduced = useReducedMotion();
   const enter = (delay: number) => ({
@@ -15,6 +23,7 @@ export function MarketingScanCollage() {
     viewport: { once: true, amount: 0.2 },
     transition: { duration: reduced ? 0 : 0.55, delay: reduced ? 0 : delay, ease: "easeOut" as const },
   });
+  const [before, after] = SCAN_LEAD.body.split(SCAN_LEAD.matchedPhrase);
   return (
     <section id="features" className="scan-collage" data-proof="scan">
       <header className="left-heading">
@@ -24,8 +33,7 @@ export function MarketingScanCollage() {
         <p>
           Every keyword and community is searched on a schedule. Titles are filtered first,
           then the shortlisted posts and comments are read in full and scored with a written
-          reason and the exact phrase that matched your product.{" "}
-          <a href="#costs">See what a scan costs</a>
+          reason and the exact phrase that matched your product.
         </p>
       </header>
       <div className="collage">
@@ -39,23 +47,65 @@ export function MarketingScanCollage() {
         <motion.div className="collage-window" {...enter(0.25)} aria-hidden="true">
           <AppMockLeads />
         </motion.div>
-        <motion.div className="collage-card" {...enter(0.6)}>
-          <div className="fragment-title">
-            <ThreadIdentity thread={SCAN_LEAD} />
-            <ScoreBadge score={SCAN_LEAD.score} />
+        <motion.article className="collage-card" {...enter(0.6)}>
+          <div className="collage-main">
+            <div className="mock-identity">
+              <AuthorAvatar name={SCAN_LEAD.author} src={SCAN_LEAD.avatar} size={28} />
+              <span>u/{SCAN_LEAD.author}</span>
+              <small>r/{SCAN_LEAD.subreddit}</small>
+              <small>{SCAN_LEAD_FACTS.age}</small>
+              <ScoreBadge score={SCAN_LEAD.score} className="ml-auto" />
+            </div>
+            <a className="fragment-subject" href={SCAN_LEAD.url} target="_blank" rel="noreferrer">
+              {SCAN_LEAD.title}
+            </a>
+            <span className="mock-meta">
+              in r/{SCAN_LEAD.subreddit} - {SCAN_LEAD.stage}
+            </span>
+            <p className="mock-reason">{SCAN_LEAD.reason}</p>
+            <p className="collage-body">
+              {before}
+              <mark>{SCAN_LEAD.matchedPhrase}</mark>
+              {after}
+            </p>
+            <dl className="collage-metrics">
+              <div>
+                <dt>Fit</dt>
+                <dd>{SCAN_LEAD_FACTS.fit}</dd>
+              </div>
+              <div>
+                <dt>Intent</dt>
+                <dd>{SCAN_LEAD_FACTS.intent}</dd>
+              </div>
+              <div>
+                <dt>Engagement</dt>
+                <dd>{SCAN_LEAD_FACTS.engagement}</dd>
+              </div>
+            </dl>
+            <div className="collage-foot">
+              <span>
+                <ArrowUp size={13} />
+                {SCAN_LEAD_FACTS.points}
+              </span>
+              <span>
+                <MessageCircle size={13} />
+                {SCAN_LEAD_FACTS.comments}
+              </span>
+              <span>
+                <ShieldCheck size={13} />
+                {SCAN_LEAD.promoRule}
+              </span>
+            </div>
           </div>
-          <a className="fragment-subject" href={SCAN_LEAD.url} target="_blank" rel="noreferrer">
-            {SCAN_LEAD.title}
-          </a>
-          <p>{SCAN_LEAD.reason}</p>
-          <mark>{SCAN_LEAD.matchedPhrase}</mark>
-          <ol className="collage-steps">
-            <li>Searched</li>
-            <li>Kept by the title filter</li>
-            <li>Read in full and scored</li>
-          </ol>
-          <small>Saved score, reason and phrase for this r/{SCAN_LEAD.subreddit} post.</small>
-        </motion.div>
+          <div className="collage-actions" aria-hidden="true">
+            {ACTIONS.map(([label, Icon]) => (
+              <span key={label}>
+                <Icon size={13} />
+                {label}
+              </span>
+            ))}
+          </div>
+        </motion.article>
       </div>
     </section>
   );

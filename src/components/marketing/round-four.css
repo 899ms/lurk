@@ -36,7 +36,7 @@
   text-underline-offset: 3px;
   text-decoration-style: dotted;
 }
-.cost-table-section .narrow-heading {
+.free-section .narrow-heading {
   max-width: none;
   padding: 96px 144px 48px;
 }
@@ -45,7 +45,7 @@
 }
 .collage {
   position: relative;
-  height: 420px;
+  height: 470px;
   overflow: hidden;
   margin-inline: 48px;
 }
@@ -93,59 +93,140 @@
 }
 .collage-card {
   position: absolute;
-  right: 72px;
-  top: 40px;
+  right: 48px;
+  top: 32px;
   z-index: 2;
-  width: 400px;
+  width: 620px;
   display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 22px;
+  gap: 16px;
+  padding: 18px;
   border-radius: var(--radius-card);
   background: var(--surface);
   border: 1px solid var(--m-outline);
   box-shadow: var(--m-fragment-shadow);
-  font-size: 13px;
+  font-size: 12px;
 }
-.collage-card p {
+.collage-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.collage-main .mock-identity small {
+  font: 10px var(--font-mono);
+  color: var(--fg-muted);
+}
+.collage-main .fragment-subject {
+  font-size: 18px;
+}
+.collage-body {
   color: var(--fg-muted);
   line-height: 1.55;
 }
-.collage-card mark {
-  align-self: flex-start;
-  padding: 2px 6px;
-  border-radius: 6px;
+.collage-body mark {
   background: var(--m-highlight);
   color: var(--fg);
-  font-size: 12px;
+  padding: 1px 3px;
+  box-decoration-break: clone;
 }
-.collage-steps {
+.collage-metrics {
   display: flex;
-  gap: 14px;
-  padding: 0;
-  margin: 4px 0 0;
-  list-style: none;
-  counter-reset: step;
-  font-size: 11px;
+  gap: 18px;
+  margin: 2px 0 0;
+}
+.collage-metrics div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.collage-metrics dt {
+  font: 10px var(--font-mono);
   color: var(--fg-muted);
 }
-.collage-steps li::before {
-  counter-increment: step;
-  content: counter(step);
-  display: inline-grid;
-  place-items: center;
-  width: 16px;
-  height: 16px;
-  margin-right: 6px;
-  border-radius: 50%;
-  background: var(--m-wash);
-  border: 1px solid var(--m-outline);
-  font-size: 10px;
+.collage-metrics dd {
+  margin: 0;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.collage-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font: 10px var(--font-mono);
+  color: var(--fg-muted);
+}
+.collage-foot span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.collage-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex-shrink: 0;
+  font-size: 11px;
+}
+.collage-actions span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: var(--radius-control);
   color: var(--fg);
 }
-.collage-card small {
+.collage-actions span:first-child {
+  border: 1px solid var(--m-outline);
+  background: var(--m-wash);
+}
+.collage-actions svg {
   color: var(--fg-muted);
+}
+.mock-drafts {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.mock-body {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--fg-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.mock-draft-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: var(--radius-card);
+  background: var(--m-stage);
   font-size: 11px;
+}
+.mock-draft-panel small {
+  color: var(--fg-muted);
+}
+.mock-generate {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.mock-draft-text {
+  padding: 12px;
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.mock-draft-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 .seo-tiles {
   padding-bottom: 80px;
@@ -428,11 +509,11 @@
 }
 @media (max-width: 1100px) {
   .left-heading,
-  .cost-table-section .narrow-heading {
+  .free-section .narrow-heading {
     padding-inline: 32px;
   }
   .collage {
-    height: 520px;
+    height: 620px;
     margin-inline: 16px;
   }
   .collage-window {
@@ -447,7 +528,7 @@
   .collage-card {
     right: 16px;
     top: 200px;
-    width: min(400px, 80%);
+    width: min(620px, 92%);
   }
   .four-up {
     grid-template-columns: 1fr 1fr;

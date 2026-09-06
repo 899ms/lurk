@@ -1,13 +1,11 @@
 import { AuthorAvatar } from "@/components/AuthorAvatar";
-import { CostLine } from "@/components/CostLine";
 import { SubredditChip } from "@/components/SubredditChip";
 import { relativeAge } from "@/lib/format";
 import type { Sentiment } from "@/lib/competitors/classify";
 import type { MentionView } from "@/lib/competitors/read";
-import type { LeadCost } from "@/lib/feed";
 import { cn } from "@/lib/utils";
 
-type MentionCardProps = { mention: MentionView; cost: LeadCost | null };
+type MentionCardProps = { mention: MentionView };
 
 const DOT: Record<Sentiment, string> = {
   positive: "bg-score-hot",
@@ -21,8 +19,8 @@ const SENTIMENT_WORD: Record<Sentiment, string> = {
   negative: "Complains about it",
 };
 
-/** One post that named a competitor, with what it said and what it cost. */
-export function MentionCard({ mention, cost }: MentionCardProps) {
+/** One post that named a competitor, and what it said. */
+export function MentionCard({ mention }: MentionCardProps) {
   return (
     <div className="flex flex-col gap-2.5 rounded-card border bg-surface p-4">
       <div className="flex flex-wrap items-center gap-2">
@@ -54,11 +52,6 @@ export function MentionCard({ mention, cost }: MentionCardProps) {
       ) : null}
       <div className="flex flex-wrap items-center gap-3">
         <span className="text-mono text-fg-muted">about {mention.competitor}</span>
-        {cost ? (
-          <CostLine costUsd={cost.costUsd} sku={cost.sku} requestId={cost.requestId} />
-        ) : (
-          <span className="text-mono text-fg-muted">Answered from data already fetched</span>
-        )}
       </div>
     </div>
   );

@@ -1,11 +1,9 @@
 import { OpportunityCard, type RankingThread } from "@/components/seo/OpportunityCard";
-import type { KeywordCost } from "@/lib/seo/read";
 
 type KeywordSectionProps = {
   keyword: string;
   monthlyVolume: number | null;
   threads: RankingThread[];
-  cost: KeywordCost | null;
 };
 
 function volumeLine(monthlyVolume: number | null): string {
@@ -15,7 +13,7 @@ function volumeLine(monthlyVolume: number | null): string {
 }
 
 /** One keyword, what it is worth, and every Reddit thread ranking for it. */
-export function KeywordSection({ keyword, monthlyVolume, threads, cost }: KeywordSectionProps) {
+export function KeywordSection({ keyword, monthlyVolume, threads }: KeywordSectionProps) {
   return (
     <section className="flex flex-col gap-3">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -26,7 +24,7 @@ export function KeywordSection({ keyword, monthlyVolume, threads, cost }: Keywor
       </div>
       <div className="flex flex-col gap-2">
         {threads.map((thread) => (
-          <OpportunityCard key={thread.id} thread={thread} cost={cost} />
+          <OpportunityCard key={thread.id} thread={thread} />
         ))}
       </div>
     </section>

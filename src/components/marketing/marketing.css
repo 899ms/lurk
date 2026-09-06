@@ -95,12 +95,6 @@
 .competitor-flag { display: inline-flex; align-items: center; gap: 6px; margin-top: 14px; padding: 4px 8px; border: 1px solid var(--border); border-radius: var(--radius-control); font-size: 10px; }
 .mock-volume { display: flex; justify-content: space-between; padding: 20px; background: var(--m-stage); border-radius: var(--radius-control); font-size: 12px; }
 .mock-volume span { color: var(--fg-muted); }
-.mock-price { background: var(--m-stage); padding: 24px; border-radius: var(--radius-card); display: flex; align-items: baseline; gap: 20px; }
-.mock-price > span { font-size: 46px; letter-spacing: -0.03em; }
-.mock-price small { font: 12px var(--font-mono); color: var(--fg-muted); }
-.mock-ledger > div { display: flex; justify-content: space-between; padding: 14px 0; border-bottom: 1px solid var(--border); font: 12px var(--font-mono); }
-.mock-ledger small { display: block; color: var(--fg-muted); font: 11px var(--font-sans); margin-top: 4px; }
-.mock-ledger .mock-ledger-head { font: 10px var(--font-mono); color: var(--fg-muted); }
 /* Every landscape window deliberately runs through the sky panel's bottom. */
 .marketing-hero { height: 820px; overflow: hidden; }
 .hero-product { max-width: 1120px; }

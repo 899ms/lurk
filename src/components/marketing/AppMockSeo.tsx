@@ -1,5 +1,4 @@
 import { SubredditChip } from "@/components/SubredditChip";
-import { CostLine } from "@/components/CostLine";
 import { BrandImage } from "./BrandImage";
 import { MockFrame } from "./MockFrame";
 import { MockButton } from "./MockButton";
@@ -50,8 +49,6 @@ export function AppMockSeo() {
         </div>
         <div className="mock-cost">
           <BrandImage name="AnyAPI" src="/anyapi-mark.svg" size={14} />
-          <CostLine costUsd={0.0009} sku="google.search" />
-          <span> / call example</span>
         </div>
       </div>
     </MockFrame>

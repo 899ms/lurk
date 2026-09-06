@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import { lastRunJob } from "@/jobs/enqueue";
 import { requireLocalUser } from "@/lib/auth";
 import { listCompetitorNames, listMentions, mentionSeries } from "@/lib/competitors/read";
-import { leadCosts } from "@/lib/leads";
 import { activeProject } from "@/lib/projects";
 
 type CompetitorsPageProps = { searchParams: Promise<{ project?: string }> };
@@ -44,10 +43,6 @@ export default async function CompetitorsPage({ searchParams }: CompetitorsPageP
     listMentions(project.id),
     lastRunJob("competitor_scan", project.id),
   ]);
-  const costs = await leadCosts(
-    project.id,
-    mentions.map((mention) => mention.postId),
-  );
   const counts = new Map<string, number>();
   for (const mention of mentions) {
     counts.set(mention.competitor, (counts.get(mention.competitor) ?? 0) + 1);
@@ -90,11 +85,7 @@ export default async function CompetitorsPage({ searchParams }: CompetitorsPageP
           ) : (
             <div className="flex flex-col gap-3">
               {mentions.map((mention) => (
-                <MentionCard
-                  key={mention.id}
-                  mention={mention}
-                  cost={costs.get(mention.postId) ?? null}
-                />
+                <MentionCard key={mention.id} mention={mention} />
               ))}
             </div>
           )}

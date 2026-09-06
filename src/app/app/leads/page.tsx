@@ -8,7 +8,7 @@ import { scanNowAction } from "@/app/app/scan";
 import { lastRunJob } from "@/jobs/enqueue";
 import { requireLocalUser } from "@/lib/auth";
 import { FEED_WINDOWS, type FeedWindow, type LeadStatus } from "@/lib/feed";
-import { feedFacets, leadCosts, listLeads } from "@/lib/leads";
+import { feedFacets, listLeads } from "@/lib/leads";
 import { activeProject } from "@/lib/projects";
 
 type LeadsPageProps = {
@@ -79,10 +79,6 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
     feedFacets(project.id),
     lastRunJob("scan", project.id),
   ]);
-  const costs = await leadCosts(
-    project.id,
-    rows.map((row) => row.postId).filter((id): id is string => id !== null),
-  );
   const cards = rows.map(toCard);
 
   return (
@@ -115,13 +111,8 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
         <EmptyState title="Nothing here" sentence={EMPTY_SENTENCE[status]} />
       ) : (
         <div className="flex flex-col gap-3">
-          {cards.map((card, index) => (
-            <LeadCard
-              key={card.id}
-              lead={card}
-              projectId={project.id}
-              cost={costs.get(rows[index].postId ?? "") ?? null}
-            />
+          {cards.map((card) => (
+            <LeadCard key={card.id} lead={card} projectId={project.id} />
           ))}
         </div>
       )}

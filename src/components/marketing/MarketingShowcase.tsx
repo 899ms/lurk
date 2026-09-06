@@ -3,12 +3,12 @@ import { useState } from "react";
 import { PillTabs } from "@/components/PillTabs";
 import { AppMockLeads } from "./AppMockLeads";
 import { AppMockSeo } from "./AppMockSeo";
-import { AppMockUsage } from "./AppMockUsage";
+import { AppMockDrafts } from "./AppMockDrafts";
 import { BRAND_MARKS } from "./BrandWord";
 const TABS = [
   { id: "leads", label: "Leads" },
   { id: "seo", label: "Reddit SEO", mark: BRAND_MARKS.Reddit },
-  { id: "usage", label: "Data usage" },
+  { id: "drafts", label: "Drafts" },
 ];
 
 export function MarketingShowcase() {
@@ -21,7 +21,7 @@ export function MarketingShowcase() {
         aria-label={TABS.find((item) => item.id === tab)?.label}
         className="product-mat"
       >
-        {tab === "leads" ? <AppMockLeads /> : tab === "seo" ? <AppMockSeo /> : <AppMockUsage />}
+        {tab === "leads" ? <AppMockLeads /> : tab === "seo" ? <AppMockSeo /> : <AppMockDrafts />}
       </div>
     </div>
   );

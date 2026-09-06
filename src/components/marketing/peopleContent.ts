@@ -36,11 +36,11 @@ export type PeopleCard = {
   title: string;
   caption: string;
   ask: string;
-  shot: "leads" | "seo" | "usage";
+  shot: "leads" | "seo" | "drafts";
   tone: "pastel-pink" | "pastel-teal" | "pastel-mint";
 };
 
-/** Three windows into the product. The first two asks are saved post titles. */
+/** Three windows into the product. Every ask is a saved post title. */
 export const PEOPLE_CARDS: PeopleCard[] = [
   {
     title: "Leads",
@@ -57,10 +57,10 @@ export const PEOPLE_CARDS: PeopleCard[] = [
     tone: "pastel-teal",
   },
   {
-    title: "Data usage",
-    caption: "What each lead cost, per call, on the free hosted key or your own AnyAPI wallet.",
-    ask: "What did finding this lead cost?",
-    shot: "usage",
+    title: "Drafts",
+    caption: "A reply in your voice that reacts to the post and asks one question. You copy it; nothing sends.",
+    ask: "Any budgeting app for people who enjoy the budgeting process?",
+    shot: "drafts",
     tone: "pastel-mint",
   },
 ];

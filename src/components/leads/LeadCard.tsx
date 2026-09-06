@@ -5,14 +5,12 @@ import { ArrowUp, MessageCircle } from "lucide-react";
 import { AuthorAvatar } from "@/components/AuthorAvatar";
 import { DraftPanel } from "@/components/drafts/DraftPanel";
 import { Avatar } from "@/components/Avatar";
-import { CostLine } from "@/components/CostLine";
 import { ScoreBadge } from "@/components/ScoreBadge";
 import { SubredditChip } from "@/components/SubredditChip";
 import { HighlightedBody } from "@/components/leads/HighlightedBody";
 import { LeadActions } from "@/components/leads/LeadActions";
 import { PromoPolicyBadge } from "@/components/leads/PromoPolicyBadge";
 import { relativeAge } from "@/lib/format";
-import type { LeadCost } from "@/lib/feed";
 
 export type CardLead = {
   id: string;
@@ -41,7 +39,7 @@ export type CardLead = {
   postAuthorAvatar: string | null;
 };
 
-type LeadCardProps = { lead: CardLead; projectId: string; cost: LeadCost | null };
+type LeadCardProps = { lead: CardLead; projectId: string };
 
 const EXCERPT_CHARS = 320;
 
@@ -55,7 +53,7 @@ function Metric({ label, value }: { label: string; value: number | null }) {
 }
 
 /** One lead, from who posted it down to what its data cost. Click to expand. */
-export function LeadCard({ lead, projectId, cost }: LeadCardProps) {
+export function LeadCard({ lead, projectId }: LeadCardProps) {
   const [open, setOpen] = useState(false);
   const [draftRequests, setDraftRequests] = useState(0);
   const draftRef = useRef<HTMLDivElement>(null);
@@ -125,15 +123,10 @@ export function LeadCard({ lead, projectId, cost }: LeadCardProps) {
             <p className="text-body text-fg-muted">A title only, with no text of its own.</p>
           )}
 
-          {open ? (
-            <div className="flex gap-6 pt-1">
-              <Metric label="Fit" value={lead.fit} />
-              <Metric label="Intent" value={lead.intent} />
-              <Metric label="Engagement" value={lead.engagement} />
-            </div>
-          ) : null}
-
-          <div className="flex flex-wrap items-center gap-3 pt-1">
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 pt-1">
+            <Metric label="Fit" value={lead.fit} />
+            <Metric label="Intent" value={lead.intent} />
+            <Metric label="Engagement" value={lead.engagement} />
             <span className="inline-flex items-center gap-1 text-mono tabular-nums text-fg-muted">
               <ArrowUp className="size-3.5" aria-hidden="true" />
               {lead.points ?? 0}
@@ -143,11 +136,6 @@ export function LeadCard({ lead, projectId, cost }: LeadCardProps) {
               {lead.numComments ?? 0}
             </span>
             <PromoPolicyBadge policy={lead.promoPolicy} rulesText={lead.rulesText} />
-            {cost ? (
-              <CostLine costUsd={cost.costUsd} sku={cost.sku} requestId={cost.requestId} />
-            ) : (
-              <span className="text-mono text-fg-muted">Answered from data already fetched</span>
-            )}
           </div>
         </div>
 

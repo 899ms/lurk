@@ -1,9 +1,7 @@
 import { ArrowUp, MessageCircle } from "lucide-react";
-import { CostLine } from "@/components/CostLine";
 import { SubredditChip } from "@/components/SubredditChip";
 import { relativeAge } from "@/lib/format";
 import { GoogleRankBadge } from "@/components/seo/GoogleRankBadge";
-import type { KeywordCost } from "@/lib/seo/read";
 
 export type RankingThread = {
   id: string;
@@ -18,7 +16,7 @@ export type RankingThread = {
   createdAt: Date;
 };
 
-type OpportunityCardProps = { thread: RankingThread; cost: KeywordCost | null };
+type OpportunityCardProps = { thread: RankingThread };
 
 function Count({ icon, value }: { icon: React.ReactNode; value: number | null }) {
   return (
@@ -29,8 +27,8 @@ function Count({ icon, value }: { icon: React.ReactNode; value: number | null })
   );
 }
 
-/** One Reddit thread Google ranks for a keyword, and what it cost to find. */
-export function OpportunityCard({ thread, cost }: OpportunityCardProps) {
+/** One Reddit thread Google ranks for a keyword. */
+export function OpportunityCard({ thread }: OpportunityCardProps) {
   const iconClass = "size-3.5 shrink-0";
   return (
     <div className="flex items-start gap-3 rounded-card border bg-surface p-4">
@@ -58,7 +56,6 @@ export function OpportunityCard({ thread, cost }: OpportunityCardProps) {
               Competitor named
             </span>
           ) : null}
-          {cost ? <CostLine costUsd={cost.costUsd} sku={cost.sku} requestId={cost.requestId} /> : null}
         </div>
       </div>
     </div>

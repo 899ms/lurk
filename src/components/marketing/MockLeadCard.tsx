@@ -1,13 +1,11 @@
 import { AnimatedScore } from "./AnimatedScore";
 import { ExternalLink, ShieldCheck } from "lucide-react";
 import { AuthorAvatar } from "@/components/AuthorAvatar";
-import { CostLine } from "@/components/CostLine";
 import { ScoreBadge } from "@/components/ScoreBadge";
 import { SubredditChip } from "@/components/SubredditChip";
-import { BrandImage } from "./BrandImage";
 import type { MockLead } from "./mockContent";
 
-/** Real saved content; the cost is explicitly a per-call illustration. */
+/** Real saved content, laid out like the dashboard card. */
 export function MockLeadCard({
   lead,
   animateScore = false,
@@ -46,11 +44,6 @@ export function MockLeadCard({
       <div className="mock-policy">
         <ShieldCheck />
         <span>{lead.promoRule}</span>
-      </div>
-      <div className="mock-cost">
-        <BrandImage name="AnyAPI" src="/anyapi-mark.svg" size={14} />
-        <CostLine costUsd={lead.costUsd} sku={lead.sku} />
-        <span> / call example</span>
       </div>
     </article>
   );

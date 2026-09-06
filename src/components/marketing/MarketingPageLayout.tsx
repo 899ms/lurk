@@ -22,7 +22,7 @@ export function MarketingPageLayout({ variant }: { variant: Variant }) {
           <div className="hero-copy">
             <a className="hero-eyebrow" href="#self-host">
               <span className="status-dot" />
-              Open source. Yours to run.
+              Free to use. Open source.
               <ArrowUpRight />
             </a>
             <h1 id="marketing-title">
@@ -33,15 +33,14 @@ export function MarketingPageLayout({ variant }: { variant: Variant }) {
             <div className="hero-description">
               <p>Find the post. Understand the intent. Write a useful reply.</p>
               <p>
-                Buyer signals, community rules, and the cost of the data - all
-                on the lead.
+                Free on the hosted app, free to self-host. No card, no subscription.
               </p>
             </div>
             <CtaRow />
             <div className="hero-promises">
               <span>
                 <Check />
-                Free hosted tier
+                Free, no card
               </span>
               <span>
                 <Check />

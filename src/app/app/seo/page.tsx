@@ -9,7 +9,7 @@ import { lastRunJob } from "@/jobs/enqueue";
 import { requireLocalUser } from "@/lib/auth";
 import { activeProject } from "@/lib/projects";
 import { normalizeQuery } from "@/lib/reddit/fetch";
-import { keywordCosts, listOpportunities, seoFacets, volumesFor, type SeoRow } from "@/lib/seo/read";
+import { listOpportunities, seoFacets, volumesFor, type SeoRow } from "@/lib/seo/read";
 
 type SeoPageProps = {
   searchParams: Promise<{
@@ -72,7 +72,7 @@ export default async function SeoPage({ searchParams }: SeoPageProps) {
   ]);
   const grouped = byKeyword(rows);
   const keywords = [...grouped.keys()];
-  const [volumes, costs] = await Promise.all([volumesFor(keywords), keywordCosts(project.id, keywords)]);
+  const volumes = await volumesFor(keywords);
 
   return (
     <div className="flex flex-col gap-5">
@@ -100,7 +100,6 @@ export default async function SeoPage({ searchParams }: SeoPageProps) {
               keyword={keyword}
               monthlyVolume={volumes.get(normalizeQuery(keyword)) ?? null}
               threads={grouped.get(keyword) ?? []}
-              cost={costs.get(keyword) ?? null}
             />
           ))}
         </div>

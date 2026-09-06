@@ -1,5 +1,5 @@
 import { MarketingPeople } from "./MarketingPeople";
-import { MarketingCostTable } from "./MarketingCostTable";
+import { MarketingFree } from "./MarketingFree";
 import { MarketingScanCollage } from "./MarketingScanCollage";
 import { MarketingSeoTiles } from "./MarketingSeoTiles";
 import { OpenSourcePanel } from "./OpenSourcePanel";
@@ -9,7 +9,7 @@ export function MarketingFeatures() {
   return (
     <>
       <MarketingPeople />
-      <MarketingCostTable />
+      <MarketingFree />
       <MarketingScanCollage />
       <MarketingSeoTiles />
       <OpenSourcePanel />
