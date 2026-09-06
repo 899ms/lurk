@@ -266,9 +266,12 @@ if [ -n "$DOMAIN" ]; then
     --query properties.staticIp -o tsv)"
   # An apex domain has to be an A record to the environment's address, because a
   # CNAME cannot sit at the root of a zone. A subdomain uses a CNAME instead.
+  # The apex certificate validates over HTTP through that A record; TXT
+  # validation prints a token that has to be published by hand and left
+  # lurk.so's certificate Pending on 2026-09-05.
   if [ "$(printf '%s' "$DOMAIN" | tr -cd '.' | wc -c)" -le 1 ]; then
     APEX_RECORD="A     $DOMAIN -> $STATIC_IP"
-    VALIDATION=TXT
+    VALIDATION=HTTP
   else
     APEX_RECORD="CNAME $DOMAIN -> $FQDN"
     VALIDATION=CNAME
@@ -287,6 +290,12 @@ DNS
   fi
   run az containerapp env certificate create -n "$ENV_NAME" -g "$RESOURCE_GROUP" \
     --hostname "$DOMAIN" --validation-method "$VALIDATION" --certificate-name "$BASE-cert" -o none
+  # Issuance takes minutes; binding a Pending certificate fails.
+  until [ "$(capture az containerapp env certificate list -n "$ENV_NAME" -g "$RESOURCE_GROUP" \
+      --query "[?name=='$BASE-cert'].properties.provisioningState | [0]" -o tsv)" = "Succeeded" ]; do
+    echo "certificate $BASE-cert still provisioning"
+    sleep 30
+  done
   run az containerapp hostname bind -n "$APP_NAME" -g "$RESOURCE_GROUP" \
     --hostname "$DOMAIN" --environment "$ENV_NAME" --certificate "$BASE-cert" -o none
 else
