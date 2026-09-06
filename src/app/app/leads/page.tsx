@@ -11,6 +11,7 @@ import { requireLocalUser } from "@/lib/auth";
 import { FEED_WINDOWS, type FeedWindow, type LeadStatus } from "@/lib/feed";
 import { feedFacets, listLeads, listReviewItems } from "@/lib/leads";
 import { activeProject } from "@/lib/projects";
+import { sourcesForPosts } from "@/lib/usage";
 
 type LeadsPageProps = {
   searchParams: Promise<{
@@ -31,7 +32,10 @@ const EMPTY_SENTENCE: Record<LeadStatus, string> = {
   resolved: "No lead has said in its thread that the need is already met.",
 };
 
-function toCard(lead: Awaited<ReturnType<typeof listLeads>>[number]): CardLead {
+function toCard(
+  lead: Awaited<ReturnType<typeof listLeads>>[number],
+  sources: Map<string, { kind: string; key: string }[]>,
+): CardLead {
   const isComment = lead.commentId !== null;
   return {
     id: lead.id,
@@ -59,6 +63,7 @@ function toCard(lead: Awaited<ReturnType<typeof listLeads>>[number]): CardLead {
     postAuthor: lead.postAuthor,
     postAuthorAvatar: lead.postAuthorAvatar,
     observedAt: lead.commentsObservedAt ?? lead.bodyObservedAt,
+    sources: (lead.postId ? sources.get(lead.postId) : undefined) ?? [],
   };
 }
 
@@ -83,7 +88,11 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
     lastRunJob("scan", project.id),
     listReviewItems(project.id, days),
   ]);
-  const cards = rows.map(toCard);
+  const sources = await sourcesForPosts(
+    project.id,
+    rows.map((lead) => lead.postId).filter((postId): postId is string => postId !== null),
+  );
+  const cards = rows.map((lead) => toCard(lead, sources));
 
   return (
     <div className="flex flex-col gap-5">

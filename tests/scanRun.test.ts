@@ -16,6 +16,7 @@ const fetchPost = vi.fn();
 const fetchPostComments = vi.fn();
 const fetchAuthorProfile = vi.fn();
 const fetchSubredditDetails = vi.fn();
+const fetchFeedThreads = vi.fn();
 
 vi.mock("@/lib/llm", () => ({ generateStructured }));
 vi.mock("@/lib/reddit/skus", () => ({
@@ -26,6 +27,7 @@ vi.mock("@/lib/reddit/skus", () => ({
   fetchAuthorProfile,
   fetchSubredditDetails,
 }));
+vi.mock("@/lib/scan/serp", () => ({ fetchFeedThreads, FEED_TIMEFRAME: "7d" }));
 vi.mock("@/lib/anyapi", () => ({
   clientForUser: async () => ({
     client: {},
@@ -84,6 +86,8 @@ describe.skipIf(!hasDatabase)("runScan against a database", () => {
     for (const mock of [fetchSearch, fetchSubredditPosts, fetchPost, fetchPostComments]) {
       mock.mockReset();
     }
+    fetchFeedThreads.mockReset();
+    fetchFeedThreads.mockResolvedValue({ value: [], reused: true, costUsd: 0 });
     fetchSubredditPosts.mockResolvedValue({ value: { posts: [], nextCursor: null }, reused: true, costUsd: 0 });
     fetchAuthorProfile.mockResolvedValue({ value: null, reused: true, costUsd: 0 });
     fetchPostComments.mockResolvedValue({ value: [], reused: true, costUsd: 0 });
@@ -276,6 +280,220 @@ describe.skipIf(!hasDatabase)("runScan against a database", () => {
     expect(rows).toHaveLength(2);
     expect(outcome.leads).toBe(2);
     expect(rows.filter((one) => one.commentId === commentId)).toHaveLength(1);
+  });
+
+
+  async function community(projectId: string, name: string) {
+    const [row] = await db()
+      .insert(schema.projectSubreddits)
+      .values({ projectId, name })
+      .returning();
+    return row;
+  }
+
+  async function sourcesOf(projectId: string) {
+    return db()
+      .select()
+      .from(schema.candidateSources)
+      .where(eq(schema.candidateSources.projectId, projectId));
+  }
+
+  it("records every source that found a post, and credits each of them", async () => {
+    const row = await project();
+    const [only] = await posts(1);
+    await community(row.id, only.subreddit);
+    fetchSearch.mockResolvedValue({ value: { posts: [only], nextCursor: null }, reused: true, costUsd: 0 });
+    fetchSubredditPosts.mockResolvedValue({
+      value: { posts: [only], nextCursor: null },
+      reused: true,
+      costUsd: 0,
+    });
+    fetchPost.mockResolvedValue({ value: [only], reused: true, costUsd: 0 });
+    model([only.id], (id) => assessment(id));
+
+    const outcome = await runScan(row.id, randomUUID());
+    expect(outcome.candidates).toBe(1);
+    const sources = await sourcesOf(row.id);
+    expect(sources.map((one) => one.sourceKind).sort()).toEqual(["listing", "scoped", "search"]);
+    expect(sources.every((one) => one.postId === only.id)).toBe(true);
+
+    const [keyword] = await db()
+      .select()
+      .from(schema.projectKeywords)
+      .where(eq(schema.projectKeywords.projectId, row.id));
+    const [sub] = await db()
+      .select()
+      .from(schema.projectSubreddits)
+      .where(eq(schema.projectSubreddits.projectId, row.id));
+    expect(keyword.freshCandidates).toBe(1);
+    expect(keyword.freshLeads).toBe(1);
+    expect(sub.freshCandidates).toBe(1);
+    expect(sub.freshLeads).toBe(1);
+    expect(keyword.lastCoveredAt).toBeInstanceOf(Date);
+    expect(sub.lastCoveredAt).toBeInstanceOf(Date);
+
+    const { sourceYield, sourcesForPosts } = await import("@/lib/usage");
+    const perSource = await sourceYield(row.id);
+    expect(perSource.map((one) => one.kind).sort()).toEqual(["listing", "scoped", "search"]);
+    expect(perSource.every((one) => one.candidates === 1 && one.leads === 1)).toBe(true);
+    expect((await sourcesForPosts(row.id, [only.id])).get(only.id)).toHaveLength(3);
+  });
+
+  it("reads the younger post first when the triage ranks two candidates alike", async () => {
+    const row = await project();
+    const now = Math.floor(Date.now() / 1000);
+    const [older, younger] = await upsertPosts([
+      {
+        id: `p${randomUUID().slice(0, 8)}`,
+        subreddit: "SaaS",
+        author: "asker0",
+        title: "Older form question",
+        body: "Our signup form needs conditional logic.",
+        permalink: "/r/SaaS/comments/older/form/",
+        score: 9,
+        numComments: 2,
+        createdUtc: now - 5 * 24 * 3600,
+      },
+      {
+        id: `p${randomUUID().slice(0, 8)}`,
+        subreddit: "SaaS",
+        author: "asker1",
+        title: "Newer form question",
+        body: "Our signup form needs conditional logic.",
+        permalink: "/r/SaaS/comments/newer/form/",
+        score: 1,
+        numComments: 2,
+        createdUtc: now - 3600,
+      },
+    ]);
+    fetchSearch.mockResolvedValue({
+      value: { posts: [older, younger], nextCursor: null },
+      reused: true,
+      costUsd: 0,
+    });
+    fetchPost.mockImplementation(async (_ctx: unknown, url: string) => ({
+      value: [[older, younger].find((post) => post.url === url)],
+      reused: true,
+      costUsd: 0,
+    }));
+    generateStructured.mockImplementation(async (input: { purpose: string; prompt: string }) => {
+      if (input.purpose === "triage") {
+        return {
+          items: [older.id, younger.id].map((id) => ({
+            id,
+            disposition: "read",
+            priority: "medium",
+            reasonCode: "explicit_ask",
+            reason: "asks for a form tool",
+          })),
+        };
+      }
+      return { items: idsIn(input.prompt).map((id) => assessment(id)) };
+    });
+
+    await runScan(row.id, randomUUID());
+    expect(fetchPost.mock.calls.map((call) => call[1])).toEqual([younger.url, older.url]);
+  });
+
+  it("walks a listing to its page budget and says so instead of moving the watermark", async () => {
+    const row = await project();
+    const [first, second] = await posts(2);
+    await community(row.id, first.subreddit);
+    fetchSearch.mockResolvedValue({ value: { posts: [], nextCursor: null }, reused: true, costUsd: 0 });
+    let served = 0;
+    fetchSubredditPosts.mockImplementation(async () => {
+      served += 1;
+      return {
+        value: { posts: served === 1 ? [first] : [second], nextCursor: `page-${served + 1}` },
+        reused: true,
+        costUsd: 0,
+      };
+    });
+    fetchPost.mockImplementation(async (_ctx: unknown, url: string) => ({
+      value: [[first, second].find((post) => post.url === url)],
+      reused: true,
+      costUsd: 0,
+    }));
+    model([first.id, second.id], (id) => assessment(id, { decision: "reject", fit: 0 }));
+
+    const { retrievalBudgets } = await import("@/lib/scan/constants");
+    const { limitsFor } = await import("@/lib/tiers");
+    const { config } = await import("@/lib/config");
+    const pages = retrievalBudgets(limitsFor("free", config().SELF_HOSTED)).pages;
+
+    const outcome = await runScan(row.id, randomUUID());
+    const cursors = fetchSubredditPosts.mock.calls.map((call) => call[2]?.cursor);
+    expect(cursors).toEqual([
+      undefined,
+      ...Array.from({ length: pages - 1 }, (_, index) => `page-${index + 2}`),
+    ]);
+    expect(outcome.gaps).toHaveLength(1);
+    expect(outcome.gaps[0]).toContain(first.subreddit);
+    const [sub] = await db()
+      .select()
+      .from(schema.projectSubreddits)
+      .where(eq(schema.projectSubreddits.projectId, row.id));
+    expect(sub.lastCoveredAt).toBeNull();
+  });
+
+  it("opens a Google result to date it, and drops one older than the feed window", async () => {
+    const row = await project();
+    const now = Math.floor(Date.now() / 1000);
+    const [stale] = await upsertPosts([
+      {
+        id: `p${randomUUID().slice(0, 8)}`,
+        subreddit: "SaaS",
+        author: "asker0",
+        title: "A form question from last winter",
+        body: "Our signup form needs conditional logic.",
+        permalink: "/r/SaaS/comments/stale/form/",
+        score: 40,
+        numComments: 12,
+        createdUtc: now - 90 * 24 * 3600,
+      },
+    ]);
+    fetchSearch.mockResolvedValue({ value: { posts: [], nextCursor: null }, reused: true, costUsd: 0 });
+    fetchFeedThreads.mockResolvedValue({
+      value: [
+        {
+          subreddit: "SaaS",
+          postId: stale.id,
+          canonicalUrl: `https://www.reddit.com/r/SaaS/comments/${stale.id}/`,
+        },
+      ],
+      reused: false,
+      costUsd: 0.0009,
+    });
+    fetchPost.mockResolvedValue({ value: [stale], reused: true, costUsd: 0 });
+    model([], () => assessment("none"));
+
+    const outcome = await runScan(row.id, randomUUID());
+    expect(fetchPost).toHaveBeenCalledTimes(1);
+    expect(outcome.candidates).toBe(0);
+    expect(await sourcesOf(row.id)).toHaveLength(0);
+  });
+
+  it("reads the thread of a held candidate whose verdict asked for more evidence", async () => {
+    const row = await project();
+    const [held, other] = await posts(2);
+    fetchSearch.mockResolvedValue({
+      value: { posts: [held, other], nextCursor: null },
+      reused: true,
+      costUsd: 0,
+    });
+    fetchPost.mockImplementation(async (_ctx: unknown, url: string) => ({
+      value: [[held, other].find((post) => post.url === url)],
+      reused: true,
+      costUsd: 0,
+    }));
+    model([held.id, other.id], (id) =>
+      id === held.id
+        ? assessment(id, { decision: "review", fit: 2, reasonCodes: ["insufficient_evidence"] })
+        : assessment(id, { decision: "reject", fit: 0 }),
+    );
+
+    await runScan(row.id, randomUUID());
+    expect(fetchPostComments.mock.calls.map((call) => call[1])).toEqual([held.id]);
   });
 
   it("takes a lead out of the feed once its author says the need is met", async () => {

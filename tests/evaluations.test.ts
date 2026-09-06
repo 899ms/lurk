@@ -130,6 +130,8 @@ describe("judging one comment once", () => {
     name: "Formcraft",
     threshold: 50,
     profileVersion: 1,
+    queries: [],
+    communities: [],
     keywords: [],
     subreddits: [],
     competitors: [],

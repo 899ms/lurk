@@ -8,6 +8,7 @@ import { Avatar } from "@/components/Avatar";
 import { ScoreBadge } from "@/components/ScoreBadge";
 import { SubredditChip } from "@/components/SubredditChip";
 import { HighlightedBody } from "@/components/leads/HighlightedBody";
+import { FoundVia, type LeadSource } from "@/components/leads/FoundVia";
 import { LeadActions } from "@/components/leads/LeadActions";
 import { PromoPolicyBadge } from "@/components/leads/PromoPolicyBadge";
 import { relativeAge } from "@/lib/format";
@@ -39,6 +40,8 @@ export type CardLead = {
   postAuthorAvatar: string | null;
   /** When the thread behind this lead was last really read. */
   observedAt: Date | null;
+  /** Every query, community or Google search that found this post. */
+  sources: LeadSource[];
 };
 
 type LeadCardProps = { lead: CardLead; projectId: string };
@@ -116,6 +119,7 @@ export function LeadCard({ lead, projectId }: LeadCardProps) {
             in r/{lead.subreddit}
             {stage ? ` - ${stage}` : ""}
           </p>
+          <FoundVia sources={lead.sources} />
 
           {lead.isComment ? (
             <div className="flex items-center gap-2 rounded-control bg-surface-2 px-2 py-1 text-mono text-fg-muted">

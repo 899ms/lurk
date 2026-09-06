@@ -1,20 +1,12 @@
-import { and, count, eq, isNotNull } from "drizzle-orm";
-import { db } from "@/db";
-import { jobs } from "@/db/schema";
 import { enqueueJob, writeProgress } from "@/jobs/enqueue";
 import { clientForUser } from "@/lib/anyapi";
 import type { FetchContext } from "@/lib/reddit/fetch";
-import {
-  fetchAuthorProfile,
-  fetchPost,
-  fetchSearch,
-  fetchSubredditPosts,
-} from "@/lib/reddit/skus";
+import { fetchAuthorProfile, fetchPost } from "@/lib/reddit/skus";
 import type { StoredPost } from "@/lib/reddit/store";
 import { scanIntervalHours, tierForUser } from "@/lib/tier";
 import { RETENTION_DAYS } from "@/lib/tiers";
-import { judgeThreads, readThreads } from "./comments";
-import { postReadCap } from "./constants";
+import { heldForComments, judgeThreads, readThreads } from "./comments";
+import { hydrationCap } from "./constants";
 import { isSentinel } from "./evidence";
 import {
   alreadyJudged,
@@ -28,6 +20,8 @@ import {
 } from "./evaluations";
 import { leadKey, openPostLeads, resolveLeads, writeLeads, type LeadRow } from "./leads";
 import { loadScanProject, type ScanProject } from "./project";
+import { retrieve } from "./retrieve";
+import { creditSources, type CandidateSource } from "./sources";
 import type { Judgement, ScorableItem } from "./judgement";
 import { judgeItems, readOrder, triageTitles } from "./score";
 
@@ -40,36 +34,13 @@ const AUTHOR_MAX_AGE_MS = 30 * 24 * HOUR_MS;
 /** The digest of a post whose thread we have never read. */
 const UNREAD_THREAD = digestComments([]);
 
-export type ScanOutcome = { candidates: number; read: number; leads: number };
-
-async function isFirstScan(projectId: string): Promise<boolean> {
-  const rows = await db()
-    .select({ total: count() })
-    .from(jobs)
-    .where(and(eq(jobs.kind, "scan"), eq(jobs.projectId, projectId), isNotNull(jobs.finishedAt)));
-  return (rows[0]?.total ?? 0) === 0;
-}
-
-async function gatherCandidates(
-  project: ScanProject,
-  ctx: FetchContext,
-  timeframe: "day" | "week",
-): Promise<StoredPost[]> {
-  const seen = new Map<string, StoredPost>();
-  for (const keyword of project.keywords) {
-    const result = await fetchSearch(ctx, keyword, { timeframe });
-    for (const post of result.value.posts) {
-      seen.set(post.id, post);
-    }
-  }
-  for (const subreddit of project.subreddits) {
-    const result = await fetchSubredditPosts(ctx, subreddit);
-    for (const post of result.value.posts) {
-      seen.set(post.id, post);
-    }
-  }
-  return [...seen.values()];
-}
+export type ScanOutcome = {
+  candidates: number;
+  read: number;
+  leads: number;
+  /** Windows this scan could not finish covering, said in plain words. */
+  gaps: string[];
+};
 
 function toLead(
   project: ScanProject,
@@ -172,7 +143,8 @@ async function evaluationsFor(
 }
 
 /**
- * One scan: list, triage the titles, read the shortlist in full, judge it, and
+ * One scan: run the retrieval plan, triage the titles, read the shortlist in
+ * full, judge it, and
  * write what qualified. Only then are comment threads bought, for two separate
  * purposes: checking whether each qualified need is still open, and finding the
  * other people in the thread who have a need of their own. Leads are already
@@ -183,7 +155,7 @@ export async function runScan(projectId: string, jobId: string): Promise<ScanOut
   if (!project) {
     throw new Error("This project no longer exists");
   }
-  const { name: tier, limits } = await tierForUser(project.userId);
+  const { limits } = await tierForUser(project.userId);
   const funded = await clientForUser(project.userId);
   const ctx: FetchContext = {
     projectId,
@@ -191,14 +163,26 @@ export async function runScan(projectId: string, jobId: string): Promise<ScanOut
     maxAgeMs: scanIntervalHours(limits) * HOUR_MS,
   };
   const windowMs = (limits?.feedWindowDays ?? RETENTION_DAYS) * 24 * HOUR_MS;
-  const timeframe = (await isFirstScan(projectId)) ? "week" : "day";
+  const hydration = hydrationCap(limits);
 
   await writeProgress(jobId, "Looking for new posts");
   const stored = await loadEvaluations(projectId);
-  const fresh = (await gatherCandidates(project, ctx, timeframe)).filter(
-    (post) => Date.now() - post.createdAt.getTime() <= windowMs,
+  const retrieval = await retrieve({
+    project,
+    ctx,
+    limits,
+    windowMs,
+    scanIntervalHours: scanIntervalHours(limits),
+    hydration,
+  });
+  const sourcesByPost = new Map<string, CandidateSource[]>(
+    retrieval.candidates.map((candidate) => [candidate.post.id, candidate.sources]),
   );
-  const candidates = await unjudged(project, stored, fresh);
+  const candidates = await unjudged(
+    project,
+    stored,
+    retrieval.candidates.map((candidate) => candidate.post),
+  );
 
   await writeProgress(jobId, `Reading ${candidates.length} titles`);
   const triage = await triageTitles(
@@ -213,12 +197,18 @@ export async function runScan(projectId: string, jobId: string): Promise<ScanOut
       ageHours: (Date.now() - post.createdAt.getTime()) / HOUR_MS,
     })),
   );
-  const cap = postReadCap(limits, tier);
+  const left = hydration === null ? candidates.length : Math.max(hydration - retrieval.hydrated, 0);
   const byId = new Map(candidates.map((post) => [post.id, post]));
-  const shortlist = readOrder(triage)
+  const facts = new Map(
+    candidates.map((post) => [
+      post.id,
+      { ageHours: (Date.now() - post.createdAt.getTime()) / HOUR_MS, upvotes: post.score },
+    ]),
+  );
+  const shortlist = readOrder(triage, facts)
     .map((id) => byId.get(id))
     .filter((post): post is StoredPost => post !== undefined)
-    .slice(0, cap ?? candidates.length);
+    .slice(0, left);
 
   await writeProgress(jobId, `Opening ${shortlist.length} posts`);
   const full: StoredPost[] = [];
@@ -239,8 +229,15 @@ export async function runScan(projectId: string, jobId: string): Promise<ScanOut
   await writeLeads(postLeads);
 
   await writeProgress(jobId, "Reading comment threads");
-  const threadPosts = await openPostLeads(projectId, limits?.commentThreadsPerScan ?? null);
-  const { threads } = await readThreads(ctx, threadPosts);
+  const threadBudget = limits?.commentThreadsPerScan ?? null;
+  const threadPosts = await openPostLeads(projectId, threadBudget);
+  const held = await heldForComments(
+    projectId,
+    threadBudget,
+    windowMs,
+    threadPosts.map((post) => post.id),
+  );
+  const { threads } = await readThreads(ctx, [...threadPosts, ...held]);
   const judged = await judgeThreads(project, threads, stored);
   await writeEvaluations(judged.records);
   await resolveLeads(
@@ -268,7 +265,21 @@ export async function runScan(projectId: string, jobId: string): Promise<ScanOut
     ...qualified(judged.discovery).map((item) => item.comment.author ?? ""),
   ]);
 
-  await writeProgress(jobId, "Finished");
+  await creditSources(
+    sourcesByPost,
+    toJudge.map((post) => post.id),
+    [...postLeads, ...rejudged].map((lead) => lead.postId),
+  );
+
+  await writeProgress(
+    jobId,
+    retrieval.gaps.length === 0 ? "Finished" : `Finished. ${retrieval.gaps.join(" ")}`,
+  );
   await enqueueJob("scan", projectId, new Date(Date.now() + scanIntervalHours(limits) * HOUR_MS));
-  return { candidates: candidates.length, read: full.length, leads: committed.size };
+  return {
+    candidates: candidates.length,
+    read: full.length,
+    leads: committed.size,
+    gaps: retrieval.gaps,
+  };
 }

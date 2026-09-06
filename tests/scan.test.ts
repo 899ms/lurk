@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import { JUDGEMENT_SYSTEM } from "@/lib/prompts";
 import {
-  MAX_POST_READS_FREE,
   TRIAGE_BATCH_SIZE,
   engagementScore,
   foldScore,
-  postReadCap,
+  hydrationCap,
+  retrievalBudgets,
 } from "@/lib/scan/constants";
 import { BODY_CHAR_BUDGET, describeItem, truncateBody } from "@/lib/scan/evidence";
 import { judge } from "@/lib/scan/gates";
@@ -283,7 +283,7 @@ describe("triage", () => {
     const triage = await triageTitles("project-1", "A form builder", candidates);
     expect(triage.map((one) => one.id)).toEqual(["c", "b", "a"]);
     expect(triage[2].disposition).toBe("uncertain");
-    expect(readOrder(triage)).toEqual(["b", "c", "a"]);
+    expect(readOrder(triage, new Map())).toEqual(["b", "c", "a"]);
   });
 
   it("reads more titles than one batch holds, keeping every id and the ranking", async () => {
@@ -324,7 +324,7 @@ describe("triage", () => {
     expect(triage).toHaveLength(many.length);
     expect(new Set(triage.map((one) => one.id)).size).toBe(many.length);
     expect(triage.every((one) => one.disposition === "read")).toBe(true);
-    const order = readOrder(triage);
+    const order = readOrder(triage, new Map());
     expect(order.slice(0, 2)).toEqual([last, first]);
     expect(order.slice(2)).toEqual(
       many.map((one) => one.id).filter((id) => id !== last && id !== first),
@@ -336,25 +336,29 @@ describe("triage", () => {
       { id: "a", disposition: "reject", priority: "high", reasonCode: "wrong_topic", reason: "a" },
       { id: "b", disposition: "uncertain", priority: "low", reasonCode: "insufficient_context", reason: "b" },
     ];
-    expect(readOrder(triage)).toEqual(["b"]);
+    expect(readOrder(triage, new Map())).toEqual(["b"]);
   });
 });
 
-describe("post read cap", () => {
-  it("reads three posts per comment thread the tier allows", () => {
-    expect(postReadCap({ ...TIERS.free, commentThreadsPerScan: 10 }, "free")).toBe(30);
+describe("what one scan may buy", () => {
+  it("opens no more posts than the tier's hydration budget", () => {
+    expect(hydrationCap(TIERS.free)).toBe(TIERS.free.hydrationPerScan);
+    expect(hydrationCap(TIERS.connected)).toBe(TIERS.connected.hydrationPerScan);
   });
 
-  it("never reads more than the free ceiling", () => {
-    expect(postReadCap(TIERS.free, "free")).toBe(MAX_POST_READS_FREE);
-    expect(postReadCap({ ...TIERS.free, commentThreadsPerScan: 100 }, "free")).toBe(
-      MAX_POST_READS_FREE,
-    );
+  it("caps nothing for a self-hosted instance, which retrieves like a connected one", () => {
+    expect(hydrationCap(null)).toBeNull();
+    expect(retrievalBudgets(null)).toEqual(retrievalBudgets(TIERS.connected));
   });
 
-  it("caps nothing for a connected wallet or a self-hosted instance", () => {
-    expect(postReadCap(TIERS.connected, "connected")).toBeNull();
-    expect(postReadCap(null, "free")).toBeNull();
+  it("reads every budget from the tier", () => {
+    expect(retrievalBudgets(TIERS.free)).toEqual({
+      searches: TIERS.free.searchesPerScan,
+      scoped: TIERS.free.scopedSearchesPerScan,
+      listings: TIERS.free.listingPilotsPerScan,
+      serpPerDay: TIERS.free.serpQueriesPerDay,
+      pages: TIERS.free.searchPagesPerQuery,
+    });
   });
 });
 

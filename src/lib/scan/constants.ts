@@ -1,12 +1,4 @@
-import type { TierLimits, TierName } from "@/lib/tiers";
-
-/**
- * The most posts one free-tier scan may read in full. Derived from the cost
- * arithmetic in .context/implementation-notes.md: a worst-case free scan of 25
- * keywords, 10 subreddits, 60 post reads and 20 comment reads is $0.115, which
- * keeps a fully active free user inside the house data cap.
- */
-export const MAX_POST_READS_FREE = 60;
+import { TIERS, type TierLimits } from "@/lib/tiers";
 
 /**
  * The user's optional extra floor on the feed, set on the Product page. The
@@ -34,15 +26,32 @@ export const TRIAGE_BATCH_SIZE = 70;
 export const MIN_COMMENTS_FOR_THREAD = 3;
 
 /**
- * How many candidates are read in full. Three times the comment budget leaves
- * room for the scorer to reject two of every three titles the prefilter kept.
+ * How many posts one scan may open in full, whatever it opens them for. Both
+ * hydrating a Google result and reading a shortlisted candidate buy the same
+ * reddit.post call, so they spend one budget: the tier's `hydrationPerScan`,
+ * which replaces the old postReadCap because it caps exactly the same calls.
  */
-export function postReadCap(limits: TierLimits | null, tier: TierName): number | null {
-  if (!limits || limits.commentThreadsPerScan == null) {
-    return null;
-  }
-  const cap = limits.commentThreadsPerScan * 3;
-  return tier === "free" ? Math.min(cap, MAX_POST_READS_FREE) : cap;
+export function hydrationCap(limits: TierLimits | null): number | null {
+  return limits ? limits.hydrationPerScan : null;
+}
+
+/** What one scan may buy of each kind. A self-hosted instance has no tier of
+ * its own, so it retrieves like a connected one and caps nothing. */
+export function retrievalBudgets(limits: TierLimits | null): {
+  searches: number;
+  scoped: number;
+  listings: number;
+  serpPerDay: number;
+  pages: number;
+} {
+  const source = limits ?? TIERS.connected;
+  return {
+    searches: source.searchesPerScan,
+    scoped: source.scopedSearchesPerScan,
+    listings: source.listingPilotsPerScan,
+    serpPerDay: source.serpQueriesPerDay,
+    pages: source.searchPagesPerQuery,
+  };
 }
 
 /**

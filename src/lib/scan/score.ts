@@ -57,9 +57,8 @@ async function triageBatch(
 /**
  * Reads every new title in batches. Costs no Reddit data, and decides which
  * posts are worth buying in full. The list comes back in the order the caller
- * should spend its reading budget: readOrder groups by priority tier first, so
- * concatenating the batches keeps the model's ranking inside a tier and orders
- * equal-priority titles by the batch they were read in.
+ * should spend its reading budget once readOrder has put every batch's verdicts
+ * into one order.
  */
 export async function triageTitles(
   projectId: string,
@@ -75,15 +74,35 @@ export async function triageTitles(
   return out;
 }
 
+/** What a candidate's own facts say about how urgent reading it is. */
+export type ReadFacts = { ageHours: number; upvotes: number | null };
+
 /**
- * The ids to read, best first: the triage's own order inside each priority
- * tier, with the rejects left out. Uncertain candidates stay in the queue.
+ * The ids to read, best first, in one order over everything this scan found,
+ * never in the order the sources happened to return them. A candidate the
+ * triage wants read outranks one it is unsure about; inside that, the model's
+ * own priority; then the younger post, because a thread cools while it waits;
+ * then the more upvoted one. Rejects are left out and uncertain ones stay in
+ * the queue.
  */
-export function readOrder(triage: TriageItem[]): string[] {
-  const keep = triage.filter((item) => item.disposition !== "reject");
-  return PRIORITY_ORDER.flatMap((priority) =>
-    keep.filter((item) => item.priority === priority).map((item) => item.id),
-  );
+export function readOrder(triage: TriageItem[], facts: Map<string, ReadFacts>): string[] {
+  const rank = (item: TriageItem) => ({
+    disposition: item.disposition === "read" ? 0 : 1,
+    priority: PRIORITY_ORDER.indexOf(item.priority),
+    ageHours: facts.get(item.id)?.ageHours ?? Number.POSITIVE_INFINITY,
+    upvotes: facts.get(item.id)?.upvotes ?? 0,
+  });
+  return triage
+    .filter((item) => item.disposition !== "reject")
+    .map((item) => ({ item, key: rank(item) }))
+    .sort(
+      (a, b) =>
+        a.key.disposition - b.key.disposition ||
+        a.key.priority - b.key.priority ||
+        a.key.ageHours - b.key.ageHours ||
+        b.key.upvotes - a.key.upvotes,
+    )
+    .map((entry) => entry.item.id);
 }
 
 async function judgeBatch(

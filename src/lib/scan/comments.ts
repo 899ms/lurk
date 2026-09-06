@@ -1,3 +1,6 @@
+import { and, desc, eq, gte, sql } from "drizzle-orm";
+import { db } from "@/db";
+import { leadEvaluations, redditPosts } from "@/db/schema";
 import type { FetchContext } from "@/lib/reddit/fetch";
 import { fetchPostComments } from "@/lib/reddit/skus";
 import type { StoredComment, StoredPost } from "@/lib/reddit/store";
@@ -41,6 +44,40 @@ export async function readThreads(
     }
   }
   return { threads, failures };
+}
+
+/**
+ * The held candidates a thread could settle: the ones the judge sent to review
+ * because the post alone did not say enough. Their own replies are the only
+ * place that answer exists, so they get a bounded read of their own after the
+ * qualified leads have had theirs. Newest first, because a stale question is
+ * the least worth spending the last of the budget on.
+ */
+export async function heldForComments(
+  projectId: string,
+  budget: number | null,
+  windowMs: number,
+  exclude: string[] = [],
+): Promise<StoredPost[]> {
+  if (budget === 0) {
+    return [];
+  }
+  const rows = await db()
+    .select({ post: redditPosts })
+    .from(leadEvaluations)
+    .innerJoin(redditPosts, eq(redditPosts.id, leadEvaluations.postId))
+    .where(
+      and(
+        eq(leadEvaluations.projectId, projectId),
+        eq(leadEvaluations.decision, "review"),
+        sql`${leadEvaluations.commentId} is null`,
+        sql`'insufficient_evidence' = any(${leadEvaluations.reasonCodes})`,
+        gte(redditPosts.createdAt, new Date(Date.now() - windowMs)),
+      ),
+    )
+    .orderBy(desc(redditPosts.createdAt));
+  const held = rows.map((row) => row.post).filter((post) => !exclude.includes(post.id));
+  return budget === null ? held : held.slice(0, budget);
 }
 
 function block(title: string, lines: string[]): string {
