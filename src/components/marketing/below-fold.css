@@ -7,9 +7,6 @@
 .eyebrow-link { display: inline-flex; align-items: center; gap: 4px; font-size: 16px; line-height: 24px; font-weight: 500; color: var(--m-link); width: fit-content; }
 .eyebrow-link svg { width: 14px; height: 14px; }
 .eyebrow-pill { padding: 4px 10px; border-radius: var(--m-radius-pill); background: var(--m-wash); }
-.editorial-intro { display: grid; grid-template-columns: 1fr 2fr; gap: 24px; padding: 96px 144px; align-items: start; }
-.editorial-intro p { font-size: 20px; line-height: 28px; color: var(--fg-muted); }
-.editorial-intro p + p { margin-top: 32px; }
 .discovery-section { background: linear-gradient(var(--m-wash), var(--m-page) 65%); padding-bottom: 64px; border-block: 1px solid var(--m-rule); }
 .centered-heading { text-align: center; padding: 88px 80px 64px; }
 .centered-heading h2 { font-size: 44px; line-height: 48px; font-weight: 450; letter-spacing: -0.025em; margin: 24px 0; }
@@ -150,7 +147,6 @@
 .hero-promises { margin-top: 8px; }
 .marketing-hero { height: 840px; }
 @media (max-width: 1100px) {
-  .editorial-intro { padding: 72px 64px; }
   .narrow-heading { padding-inline: 32px; }
   .research-heading { padding: 72px 64px 48px; }
   .price-bars, .tier-limits { margin-inline: 32px; }
@@ -172,8 +168,6 @@
 }
 @media (max-width: 760px) {
   .marketing-body { border: none; }
-  .editorial-intro { grid-template-columns: 1fr; padding: 48px 24px; gap: 28px; }
-  .editorial-intro p { font-size: 18px; line-height: 28px; }
   .centered-heading { padding: 56px 24px 40px; }
   .centered-heading h2 { font-size: 34px; line-height: 38px; }
   .centered-heading p { font-size: 16px; line-height: 25px; }

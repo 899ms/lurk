@@ -1,4 +1,4 @@
-import { MarketingIntro } from "./MarketingIntro";
+import { MarketingPeople } from "./MarketingPeople";
 import { OpenSourceBlock } from "./OpenSourceBlock";
 import { MarketingScanStory } from "./MarketingScanStory";
 import { MarketingSeoStory } from "./MarketingSeoStory";
@@ -11,7 +11,7 @@ import { MarketingApiPanel } from "./MarketingApiPanel";
 export function MarketingFeatures() {
   return (
     <>
-      <MarketingIntro />
+      <MarketingPeople />
       <OpenSourceBlock />
       <MarketingScanStory />
       <MarketingSeoStory />
