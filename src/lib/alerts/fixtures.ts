@@ -1,4 +1,4 @@
-import { alertsConfig } from "./config";
+import { config } from "@/lib/config";
 import type { Digest, DigestLead } from "./types";
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -52,7 +52,7 @@ export function sampleDigest(projectName: string, now = new Date()): Digest {
     generatedAt: now,
     since: new Date(now.getTime() - 24 * HOUR_MS),
     cadence: "daily",
-    appUrl: alertsConfig().APP_URL,
+    appUrl: config().APP_URL,
     leads: SAMPLES.map(({ hoursAgo, ...lead }) => ({
       ...lead,
       createdAt: new Date(now.getTime() - hoursAgo * HOUR_MS),

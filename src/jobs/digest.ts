@@ -1,5 +1,5 @@
 import { allChannels, markSent, type ScheduledChannel } from "@/lib/alerts/channels";
-import { alertsConfig } from "@/lib/alerts/config";
+import { config } from "@/lib/config";
 import { newLeadsSince } from "@/lib/alerts/leads";
 import {
   CADENCE_MS,
@@ -46,7 +46,7 @@ async function digestFor(
     since,
     cadence,
     leads,
-    appUrl: alertsConfig().APP_URL,
+    appUrl: config().APP_URL,
   };
 }
 
