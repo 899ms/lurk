@@ -79,15 +79,15 @@ describe.skipIf(!process.env.DATABASE_URL)("fetchShared against a database", () 
       maxAgeMs: 60 * 60 * 1000,
     };
 
-    const first = await fetchSearch(ctx, query, "day");
-    const second = await fetchSearch(ctx, query, "day");
+    const first = await fetchSearch(ctx, query, { timeframe: "day" });
+    const second = await fetchSearch(ctx, query, { timeframe: "day" });
 
     expect(calls).toBe(1);
     expect(first.reused).toBe(false);
     expect(first.costUsd).toBe(0.0012);
     expect(second.reused).toBe(true);
     expect(second.costUsd).toBe(0);
-    expect(second.value.map((row) => row.title)).toEqual([post.title]);
+    expect(second.value.posts.map((row) => row.title)).toEqual([post.title]);
 
     const ledger = await db()
       .select()
@@ -165,7 +165,9 @@ describe.skipIf(!process.env.DATABASE_URL)("the house data cap", () => {
       funded: house.funded as unknown as Parameters<typeof fetchSearch>[0]["funded"],
       maxAgeMs: 60 * 60 * 1000,
     };
-    await expect(fetchSearch(ctx, query, "day")).rejects.toBeInstanceOf(HouseDataCapReachedError);
+    await expect(fetchSearch(ctx, query, { timeframe: "day" })).rejects.toBeInstanceOf(
+      HouseDataCapReachedError,
+    );
     expect(calls.count).toBe(0);
     expect(
       await house
@@ -185,7 +187,7 @@ describe.skipIf(!process.env.DATABASE_URL)("the house data cap", () => {
       funded: wallet.funded as unknown as Parameters<typeof fetchSearch>[0]["funded"],
       maxAgeMs: 60 * 60 * 1000,
     };
-    const result = await fetchSearch(walletCtx, walletQuery, "day");
+    const result = await fetchSearch(walletCtx, walletQuery, { timeframe: "day" });
     expect(result.reused).toBe(false);
     expect(calls.count).toBe(1);
 

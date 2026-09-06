@@ -19,6 +19,19 @@ export type TierLimits = {
   seoSearchVolume: boolean;
   competitors: number | null;
   apiRequestsPerDay: number;
+  /**
+   * What discovery and one scan may buy. The starting values come from the
+   * accepted second opinion and Kevin reviews them.
+   */
+  discoveryQueries: number;
+  discoveryQueriesMax: number;
+  searchesPerScan: number;
+  scopedSearchesPerScan: number;
+  listingPilotsPerScan: number;
+  serpQueriesPerDay: number;
+  searchPagesPerQuery: number;
+  hydrationPerScan: number;
+  discoveryRefreshDays: number;
 };
 
 export const TIERS: Record<TierName, TierLimits> = {
@@ -36,6 +49,15 @@ export const TIERS: Record<TierName, TierLimits> = {
     seoSearchVolume: false,
     competitors: 3,
     apiRequestsPerDay: 1000,
+    discoveryQueries: 8,
+    discoveryQueriesMax: 12,
+    searchesPerScan: 8,
+    scopedSearchesPerScan: 2,
+    listingPilotsPerScan: 2,
+    serpQueriesPerDay: 2,
+    searchPagesPerQuery: 2,
+    hydrationPerScan: 40,
+    discoveryRefreshDays: 7,
   },
   connected: {
     projects: null,
@@ -51,6 +73,15 @@ export const TIERS: Record<TierName, TierLimits> = {
     seoSearchVolume: true,
     competitors: null,
     apiRequestsPerDay: 10000,
+    discoveryQueries: 12,
+    discoveryQueriesMax: 20,
+    searchesPerScan: 16,
+    scopedSearchesPerScan: 4,
+    listingPilotsPerScan: 4,
+    serpQueriesPerDay: 6,
+    searchPagesPerQuery: 4,
+    hydrationPerScan: 100,
+    discoveryRefreshDays: 3,
   },
 };
 

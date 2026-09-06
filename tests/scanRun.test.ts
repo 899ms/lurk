@@ -84,7 +84,7 @@ describe.skipIf(!hasDatabase)("runScan against a database", () => {
     for (const mock of [fetchSearch, fetchSubredditPosts, fetchPost, fetchPostComments]) {
       mock.mockReset();
     }
-    fetchSubredditPosts.mockResolvedValue({ value: [], reused: true, costUsd: 0 });
+    fetchSubredditPosts.mockResolvedValue({ value: { posts: [], nextCursor: null }, reused: true, costUsd: 0 });
     fetchAuthorProfile.mockResolvedValue({ value: null, reused: true, costUsd: 0 });
     fetchPostComments.mockResolvedValue({ value: [], reused: true, costUsd: 0 });
   });
@@ -155,7 +155,7 @@ describe.skipIf(!hasDatabase)("runScan against a database", () => {
   it("reads in triage order, stores every verdict, and reuses them on the next scan", async () => {
     const row = await project();
     const [first, second, third] = await posts(3);
-    fetchSearch.mockResolvedValue({ value: [first, second, third], reused: true, costUsd: 0 });
+    fetchSearch.mockResolvedValue({ value: { posts: [first, second, third], nextCursor: null }, reused: true, costUsd: 0 });
     fetchPost.mockImplementation(async (_ctx: unknown, url: string) => ({
       value: [[first, second, third].find((post) => post.url === url)],
       reused: true,
@@ -186,7 +186,7 @@ describe.skipIf(!hasDatabase)("runScan against a database", () => {
     const [live] = await posts(1);
     const [gone] = await posts(1, { body: "[removed]" });
     const [ghost] = await posts(1, { author: "[deleted]" });
-    fetchSearch.mockResolvedValue({ value: [live, gone, ghost], reused: true, costUsd: 0 });
+    fetchSearch.mockResolvedValue({ value: { posts: [live, gone, ghost], nextCursor: null }, reused: true, costUsd: 0 });
     fetchPost.mockResolvedValue({ value: [live], reused: true, costUsd: 0 });
     model([live.id], (id) => assessment(id));
 
@@ -202,7 +202,7 @@ describe.skipIf(!hasDatabase)("runScan against a database", () => {
   it("dates a held candidate with a real Date, not the raw column text", async () => {
     const row = await project();
     const [only] = await posts(1);
-    fetchSearch.mockResolvedValue({ value: [only], reused: true, costUsd: 0 });
+    fetchSearch.mockResolvedValue({ value: { posts: [only], nextCursor: null }, reused: true, costUsd: 0 });
     fetchPost.mockResolvedValue({ value: [only], reused: true, costUsd: 0 });
     model([only.id], (id) => assessment(id, { decision: "review", fit: 2 }));
 
@@ -216,7 +216,7 @@ describe.skipIf(!hasDatabase)("runScan against a database", () => {
   it("judges a candidate again once the product profile has changed", async () => {
     const row = await project();
     const [only] = await posts(1);
-    fetchSearch.mockResolvedValue({ value: [only], reused: true, costUsd: 0 });
+    fetchSearch.mockResolvedValue({ value: { posts: [only], nextCursor: null }, reused: true, costUsd: 0 });
     fetchPost.mockResolvedValue({ value: [only], reused: true, costUsd: 0 });
     model([only.id], (id) => assessment(id, { decision: "reject", fit: 0 }));
     await runScan(row.id, randomUUID());
@@ -234,7 +234,7 @@ describe.skipIf(!hasDatabase)("runScan against a database", () => {
   it("keeps the leads it qualified when the comment fetch fails", async () => {
     const row = await project();
     const [only] = await posts(1);
-    fetchSearch.mockResolvedValue({ value: [only], reused: true, costUsd: 0 });
+    fetchSearch.mockResolvedValue({ value: { posts: [only], nextCursor: null }, reused: true, costUsd: 0 });
     fetchPost.mockResolvedValue({ value: [only], reused: true, costUsd: 0 });
     fetchPostComments.mockRejectedValue(new Error("upstream is down"));
     model([only.id], (id) => assessment(id));
@@ -248,7 +248,7 @@ describe.skipIf(!hasDatabase)("runScan against a database", () => {
   it("counts and writes one lead per qualified post and per qualified commenter", async () => {
     const row = await project();
     const [only] = await posts(1);
-    fetchSearch.mockResolvedValue({ value: [only], reused: true, costUsd: 0 });
+    fetchSearch.mockResolvedValue({ value: { posts: [only], nextCursor: null }, reused: true, costUsd: 0 });
     fetchPost.mockResolvedValue({ value: [only], reused: true, costUsd: 0 });
     const commentId = `c${randomUUID().slice(0, 8)}`;
     fetchPostComments.mockImplementation(async () => ({
@@ -281,7 +281,7 @@ describe.skipIf(!hasDatabase)("runScan against a database", () => {
   it("takes a lead out of the feed once its author says the need is met", async () => {
     const row = await project();
     const [only] = await posts(1);
-    fetchSearch.mockResolvedValue({ value: [only], reused: true, costUsd: 0 });
+    fetchSearch.mockResolvedValue({ value: { posts: [only], nextCursor: null }, reused: true, costUsd: 0 });
     fetchPost.mockResolvedValue({ value: [only], reused: true, costUsd: 0 });
     fetchPostComments.mockImplementation(async () => ({
       value: await upsertComments(only.id, [

@@ -1,20 +1,27 @@
 import { describe, expect, it } from "vitest";
 import { competitorNamed } from "@/lib/seo/competitors";
 import { seoSettings } from "@/lib/seo/limits";
-import { isRedditLink, redditResults, subredditFromUrl } from "@/lib/seo/links";
+import { redditResults, redditThread } from "@/lib/seo/links";
 import { TIERS } from "@/lib/tiers";
 
-describe("Reddit link filter", () => {
-  it("keeps reddit.com and its subdomains", () => {
-    expect(isRedditLink("https://www.reddit.com/r/SaaS/comments/abc/title/")).toBe(true);
-    expect(isRedditLink("https://old.reddit.com/r/SaaS/comments/abc/")).toBe(true);
-    expect(isRedditLink("https://reddit.com/r/SaaS/comments/abc/")).toBe(true);
+describe("Reddit thread links", () => {
+  it("reads the community and the post out of a thread URL on any reddit host", () => {
+    expect(redditThread("https://www.reddit.com/r/SaaS/comments/abc123/some_title/")).toEqual({
+      subreddit: "SaaS",
+      postId: "abc123",
+      canonicalUrl: "https://www.reddit.com/r/SaaS/comments/abc123/",
+    });
+    expect(redditThread("https://old.reddit.com/r/SaaS/comments/abc123/")?.postId).toBe("abc123");
+    expect(redditThread("https://reddit.com/r/SaaS/comments/abc123/")?.subreddit).toBe("SaaS");
   });
 
-  it("drops look-alike hosts and anything unparseable", () => {
-    expect(isRedditLink("https://notreddit.com/r/SaaS/")).toBe(false);
-    expect(isRedditLink("https://reddit.com.example.net/r/SaaS/")).toBe(false);
-    expect(isRedditLink("/r/SaaS/comments/abc/")).toBe(false);
+  it("rejects mirrors, non-thread pages and anything unparseable", () => {
+    expect(redditThread("https://notreddit.com/r/SaaS/comments/abc123/")).toBeNull();
+    expect(redditThread("https://reddit.com.example.net/r/SaaS/comments/abc123/")).toBeNull();
+    expect(redditThread("https://www.reddit.com/r/SaaS/")).toBeNull();
+    expect(redditThread("https://www.reddit.com/user/someone/")).toBeNull();
+    expect(redditThread("https://www.reddit.com/r/SaaS/comments/")).toBeNull();
+    expect(redditThread("/r/SaaS/comments/abc123/")).toBeNull();
   });
 
   it("keeps Google's own order and positions", () => {
@@ -22,13 +29,9 @@ describe("Reddit link filter", () => {
       { link: "https://example.com/a", position: 1 },
       { link: "https://www.reddit.com/r/SaaS/comments/a/", position: 2 },
       { link: "https://old.reddit.com/r/nocode/comments/b/", position: 3 },
+      { link: "https://www.reddit.com/r/SaaS/", position: 4 },
     ]);
     expect(kept.map((result) => result.position)).toEqual([2, 3]);
-  });
-
-  it("reads the community out of a thread URL", () => {
-    expect(subredditFromUrl("https://www.reddit.com/r/SaaS/comments/abc/title/")).toBe("SaaS");
-    expect(subredditFromUrl("https://www.reddit.com/user/someone/")).toBe("");
   });
 });
 

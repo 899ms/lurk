@@ -25,8 +25,10 @@ type SharedFetch<T> = {
   normalizedQuery: string;
   sort?: string | null;
   timeframe?: string | null;
+  /** Every other effective parameter, canonicalized; see `searchRuns.variant`. */
+  variant?: string;
   maxAgeMs?: number;
-  run: () => Promise<{ data: unknown; costUsd: number }>;
+  run: () => Promise<{ data: unknown; costUsd: number; nextCursor?: string | null }>;
   store: (data: unknown, runId: string) => Promise<T>;
   load: (runId: string) => Promise<T>;
 };
@@ -38,22 +40,34 @@ export function isFreshEnough(fetchedAt: Date, maxAgeMs: number, now = new Date(
   return now.getTime() - fetchedAt.getTime() <= maxAgeMs;
 }
 
-async function findRun(
-  kind: FetchKind,
-  normalizedQuery: string,
-  sort: string | null,
-  timeframe: string | null,
-  maxAgeMs: number,
-): Promise<StoredRun | null> {
+type RunKey = {
+  kind: FetchKind;
+  sku: string;
+  normalizedQuery: string;
+  sort: string | null;
+  timeframe: string | null;
+  variant: string;
+};
+
+/**
+ * The stored run that answers exactly this call. The SKU and the variant are
+ * part of the key because two endpoints, or two pages of one walk, give
+ * different answers to the same query and must never serve each other.
+ */
+export async function findRun(key: RunKey, maxAgeMs: number): Promise<StoredRun | null> {
   const rows = await db()
     .select()
     .from(searchRuns)
     .where(
       and(
-        eq(searchRuns.kind, kind),
-        eq(searchRuns.normalizedQuery, normalizedQuery),
-        sort === null ? isNull(searchRuns.sort) : eq(searchRuns.sort, sort),
-        timeframe === null ? isNull(searchRuns.timeframe) : eq(searchRuns.timeframe, timeframe),
+        eq(searchRuns.kind, key.kind),
+        eq(searchRuns.sku, key.sku),
+        eq(searchRuns.normalizedQuery, key.normalizedQuery),
+        key.sort === null ? isNull(searchRuns.sort) : eq(searchRuns.sort, key.sort),
+        key.timeframe === null
+          ? isNull(searchRuns.timeframe)
+          : eq(searchRuns.timeframe, key.timeframe),
+        eq(searchRuns.variant, key.variant),
         gte(searchRuns.fetchedAt, new Date(Date.now() - maxAgeMs)),
       ),
     )
@@ -99,9 +113,13 @@ export async function fetchShared<T>(input: SharedFetch<T>): Promise<SharedResul
   const { ctx, kind, sku, normalizedQuery } = input;
   const sort = input.sort ?? null;
   const timeframe = input.timeframe ?? null;
+  const variant = input.variant ?? "";
   const maxAgeMs = input.maxAgeMs ?? ctx.maxAgeMs;
 
-  const existing = await findRun(kind, normalizedQuery, sort, timeframe, maxAgeMs);
+  const existing = await findRun(
+    { kind, sku, normalizedQuery, sort, timeframe, variant },
+    maxAgeMs,
+  );
   if (existing) {
     const value = await input.load(existing.id);
     await recordUsage({
@@ -124,9 +142,12 @@ export async function fetchShared<T>(input: SharedFetch<T>): Promise<SharedResul
   await db().insert(searchRuns).values({
     id: runId,
     kind,
+    sku,
     normalizedQuery,
     sort,
     timeframe,
+    variant,
+    nextCursor: result.nextCursor ?? null,
     costUsd: result.costUsd.toFixed(6),
     requestId,
     fundedBy: ctx.funded.funding,
@@ -142,6 +163,18 @@ export async function fetchShared<T>(input: SharedFetch<T>): Promise<SharedResul
     reused: false,
   });
   return { value, reused: false, costUsd: result.costUsd };
+}
+
+/**
+ * The variant string for a call: its parameters in a fixed order, so the same
+ * page of the same walk is one key however the caller spelled it.
+ */
+export function variantOf(parts: Record<string, string | number | null | undefined>): string {
+  return Object.keys(parts)
+    .sort()
+    .filter((key) => parts[key] !== null && parts[key] !== undefined && parts[key] !== "")
+    .map((key) => `${key}=${parts[key]}`)
+    .join("&");
 }
 
 /** Trimmed and lowercased, so two projects asking the same thing share a run. */

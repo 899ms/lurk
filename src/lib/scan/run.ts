@@ -57,14 +57,14 @@ async function gatherCandidates(
 ): Promise<StoredPost[]> {
   const seen = new Map<string, StoredPost>();
   for (const keyword of project.keywords) {
-    const result = await fetchSearch(ctx, keyword, timeframe);
-    for (const post of result.value) {
+    const result = await fetchSearch(ctx, keyword, { timeframe });
+    for (const post of result.value.posts) {
       seen.set(post.id, post);
     }
   }
   for (const subreddit of project.subreddits) {
     const result = await fetchSubredditPosts(ctx, subreddit);
-    for (const post of result.value) {
+    for (const post of result.value.posts) {
       seen.set(post.id, post);
     }
   }

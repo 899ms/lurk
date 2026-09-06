@@ -4,11 +4,13 @@ import { redditAuthors, subreddits } from "@/db/schema";
 import {
   fetchShared,
   normalizeQuery,
+  variantOf,
   type FetchContext,
   type SharedResult,
 } from "./fetch";
 import {
   commentsOfPost,
+  cursorOfRun,
   linkRunPosts,
   postsOfRun,
   upsertComments,
@@ -21,15 +23,27 @@ import {
 
 /** One function per Reddit endpoint the scan uses, all sharing one run store. */
 
-function storePosts(data: unknown, runId: string): Promise<StoredPost[]> {
-  const posts = ((data as { posts?: RawPost[] } | null)?.posts ?? []) as RawPost[];
-  return upsertPosts(posts).then(async (stored) => {
-    await linkRunPosts(
-      runId,
-      stored.map((post) => post.id),
-    );
-    return stored;
-  });
+type RawPage = { posts?: RawPost[]; nextCursor?: string | null } | null;
+
+/** One page of a listing or a search: its posts, and where the walk continues. */
+export type PostPage = { posts: StoredPost[]; nextCursor: string | null };
+
+async function storePosts(data: unknown, runId: string): Promise<StoredPost[]> {
+  const posts = ((data as RawPage)?.posts ?? []) as RawPost[];
+  const stored = await upsertPosts(posts);
+  await linkRunPosts(
+    runId,
+    stored.map((post) => post.id),
+  );
+  return stored;
+}
+
+async function storePage(data: unknown, runId: string): Promise<PostPage> {
+  return { posts: await storePosts(data, runId), nextCursor: (data as RawPage)?.nextCursor ?? null };
+}
+
+async function loadPage(runId: string): Promise<PostPage> {
+  return { posts: await postsOfRun(runId), nextCursor: await cursorOfRun(runId) };
 }
 
 /**
@@ -42,40 +56,62 @@ function storePosts(data: unknown, runId: string): Promise<StoredPost[]> {
 export async function fetchSearch(
   ctx: FetchContext,
   query: string,
-  timeframe: "day" | "week",
-): Promise<SharedResult<StoredPost[]>> {
-  return fetchShared<StoredPost[]>({
+  options: { timeframe: "day" | "week" | "month"; cursor?: string },
+): Promise<SharedResult<PostPage>> {
+  const { timeframe, cursor } = options;
+  return fetchShared<PostPage>({
     ctx,
     kind: "keyword",
     sku: "reddit.search",
     normalizedQuery: normalizeQuery(query),
     sort: "relevance",
     timeframe,
+    variant: variantOf({ cursor }),
     run: async () => {
-      const res = await ctx.funded.client.reddit.search({ query, sort: "relevance", timeframe });
-      return { data: res.output.found ? res.output.data : null, costUsd: res.costUsd };
+      const res = await ctx.funded.client.reddit.search({
+        query,
+        sort: "relevance",
+        timeframe,
+        ...(cursor ? { cursor } : {}),
+      });
+      const data = res.output.found ? res.output.data : null;
+      return { data, costUsd: res.costUsd, nextCursor: data?.nextCursor ?? null };
     },
-    store: storePosts,
-    load: postsOfRun,
+    store: storePage,
+    load: loadPage,
   });
 }
 
+/**
+ * A community's own listing, newest first, one page per call. The page cursor
+ * and the requested size are part of the run key, so page two never serves a
+ * caller who asked for page one.
+ */
 export async function fetchSubredditPosts(
   ctx: FetchContext,
   subreddit: string,
-): Promise<SharedResult<StoredPost[]>> {
-  return fetchShared<StoredPost[]>({
+  options: { cursor?: string; limit?: number } = {},
+): Promise<SharedResult<PostPage>> {
+  const { cursor, limit } = options;
+  return fetchShared<PostPage>({
     ctx,
     kind: "subreddit_posts",
     sku: "reddit.subreddit_posts",
     normalizedQuery: normalizeQuery(subreddit),
     sort: "new",
+    variant: variantOf({ cursor, limit }),
     run: async () => {
-      const res = await ctx.funded.client.reddit.subredditPosts({ subreddit, sort: "new" });
-      return { data: res.output.found ? res.output.data : null, costUsd: res.costUsd };
+      const res = await ctx.funded.client.reddit.subredditPosts({
+        subreddit,
+        sort: "new",
+        ...(cursor ? { cursor } : {}),
+        ...(limit ? { limit } : {}),
+      });
+      const data = res.output.found ? res.output.data : null;
+      return { data, costUsd: res.costUsd, nextCursor: data?.nextCursor ?? null };
     },
-    store: storePosts,
-    load: postsOfRun,
+    store: storePage,
+    load: loadPage,
   });
 }
 

@@ -6,38 +6,43 @@ export type GoogleResult = {
   position: number;
 };
 
-/**
- * Only reddit.com itself counts. A result on a mirror or an aggregator that
- * merely quotes a thread is not a thread we can open through reddit.post.
- */
-export function isRedditLink(raw: string): boolean {
-  let host: string;
-  try {
-    host = new URL(raw).hostname.toLowerCase();
-  } catch {
-    return false;
-  }
-  return host === "reddit.com" || host.endsWith(".reddit.com");
-}
+/** A Reddit thread we can open: which community, which post, and its own URL. */
+export type RedditThread = { subreddit: string; postId: string; canonicalUrl: string };
 
-/** The community from a thread URL's /r/<name>/comments/... path, else "". */
-export function subredditFromUrl(raw: string): string {
-  let path: string;
+/**
+ * Only a real thread on reddit.com itself counts. A mirror or an aggregator
+ * that merely quotes a thread is not something reddit.post can open, and a
+ * profile, a wiki page or a community's front page is not a thread at all, so
+ * every one of those is dropped here rather than deeper in the scan.
+ */
+export function redditThread(raw: string): RedditThread | null {
+  let url: URL;
   try {
-    path = new URL(raw).pathname;
+    url = new URL(raw);
   } catch {
-    return "";
+    return null;
   }
-  const parts = path.replace(/^\/+|\/+$/g, "").split("/");
-  for (let i = 0; i + 1 < parts.length; i += 1) {
-    if (parts[i] === "r" && parts[i + 1]) {
-      return parts[i + 1];
-    }
+  const host = url.hostname.toLowerCase();
+  if (host !== "reddit.com" && !host.endsWith(".reddit.com")) {
+    return null;
   }
-  return "";
+  const parts = url.pathname.replace(/^\/+|\/+$/g, "").split("/");
+  if (parts[0] !== "r" || parts[2] !== "comments") {
+    return null;
+  }
+  const subreddit = parts[1];
+  const postId = parts[3];
+  if (!subreddit || !postId) {
+    return null;
+  }
+  return {
+    subreddit,
+    postId,
+    canonicalUrl: `https://www.reddit.com/r/${subreddit}/comments/${postId}/`,
+  };
 }
 
 /** The Reddit threads among a page of Google results, in Google's order. */
 export function redditResults(results: GoogleResult[]): GoogleResult[] {
-  return results.filter((result) => isRedditLink(result.link ?? ""));
+  return results.filter((result) => redditThread(result.link ?? "") !== null);
 }

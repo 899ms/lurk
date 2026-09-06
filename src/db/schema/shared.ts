@@ -78,9 +78,20 @@ export const searchRuns = pgTable(
   {
     id: text("id").primaryKey(),
     kind: text("kind").notNull(),
+    /** The AnyAPI endpoint this run was bought from, so two SKUs never share a run. */
+    sku: text("sku").notNull(),
     normalizedQuery: text("normalized_query").notNull(),
     sort: text("sort"),
     timeframe: text("timeframe"),
+    /**
+     * The canonical string of every other effective parameter: the page cursor,
+     * a listing limit, a geography. Two calls that differ only here are two
+     * different answers, so they must not reuse each other's run. Empty means
+     * the call took the endpoint's defaults.
+     */
+    variant: text("variant").notNull().default(""),
+    /** The cursor this run's upstream handed back, or null at the end of a walk. */
+    nextCursor: text("next_cursor"),
     fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
     costUsd: numeric("cost_usd", { precision: 12, scale: 6 }),
     requestId: text("request_id"),

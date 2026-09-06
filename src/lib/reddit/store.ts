@@ -1,6 +1,6 @@
 import { asc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { redditComments, redditPosts, searchRunPosts } from "@/db/schema";
+import { redditComments, redditPosts, searchRunPosts, searchRuns } from "@/db/schema";
 
 export type StoredPost = typeof redditPosts.$inferSelect;
 export type StoredComment = typeof redditComments.$inferSelect;
@@ -115,6 +115,15 @@ export async function postsOfRun(searchRunId: string): Promise<StoredPost[]> {
     .where(eq(searchRunPosts.searchRunId, searchRunId))
     .orderBy(asc(searchRunPosts.position));
   return rows.map((row) => row.post);
+}
+
+/** The cursor a stored run ended on, so a reused page continues the same walk. */
+export async function cursorOfRun(searchRunId: string): Promise<string | null> {
+  const rows = await db()
+    .select({ nextCursor: searchRuns.nextCursor })
+    .from(searchRuns)
+    .where(eq(searchRuns.id, searchRunId));
+  return rows[0]?.nextCursor ?? null;
 }
 
 /**

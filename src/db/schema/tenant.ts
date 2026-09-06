@@ -62,8 +62,34 @@ export const projects = pgTable("projects", {
    * the product makes the next scan judge everything again.
    */
   profileVersion: integer("profile_version").notNull().default(1),
+  /**
+   * Bumped every time discovery republishes the retrieval plan. Separate from
+   * `profileVersion` because learning where buyers ask changes no judgement,
+   * so a new plan must not throw away verdicts the old plan's candidates got.
+   */
+  discoveryVersion: integer("discovery_version").notNull().default(1),
+  /** Places this product serves, each with the page text it was read from. */
+  destinations: jsonb("destinations"),
+  /** How buyers say the problem, in their words, taken from the product page. */
+  problemPhrasings: jsonb("problem_phrasings"),
   tierSnapshot: text("tier_snapshot"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * What every row of the retrieval plan carries: where it came from (llm, serp,
+ * user), whether it is being retrieved (active, pinned, excluded, candidate),
+ * how much discovery evidence stands behind it, when its window was last
+ * covered, and what it has actually produced since. A model guess and a
+ * measured community are the same shape, so ranking can compare them.
+ */
+const planColumns = () => ({
+  source: text("source").notNull().default("llm"),
+  state: text("state").notNull().default("active"),
+  evidence: integer("evidence").notNull().default(0),
+  lastCoveredAt: timestamp("last_covered_at", { withTimezone: true }),
+  freshCandidates: integer("fresh_candidates").notNull().default(0),
+  freshLeads: integer("fresh_leads").notNull().default(0),
 });
 
 export const projectKeywords = pgTable(
@@ -74,6 +100,7 @@ export const projectKeywords = pgTable(
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
     keyword: text("keyword").notNull(),
+    ...planColumns(),
   },
   (t) => [uniqueIndex("project_keywords_project_keyword_idx").on(t.projectId, t.keyword)],
 );
@@ -86,6 +113,7 @@ export const projectSubreddits = pgTable(
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
+    ...planColumns(),
   },
   (t) => [uniqueIndex("project_subreddits_project_name_idx").on(t.projectId, t.name)],
 );
@@ -98,8 +126,73 @@ export const projectCompetitors = pgTable(
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
+    /** What this company is to us: direct substitute, alternative, supplier, reference. */
+    role: text("role"),
+    ...planColumns(),
   },
   (t) => [uniqueIndex("project_competitors_project_name_idx").on(t.projectId, t.name)],
+);
+
+/**
+ * One Google result that told us where and how this project's buyers ask. The
+ * plan is derived from these rows, so a community or a phrase can always be
+ * traced back to the thread that argued for it. The post id is Reddit's, not a
+ * reddit_posts row: evidence is recorded before any thread is bought.
+ */
+export const discoveryEvidence = pgTable(
+  "discovery_evidence",
+  {
+    id: id(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    postId: text("post_id").notNull(),
+    canonicalUrl: text("canonical_url").notNull(),
+    subreddit: text("subreddit").notNull(),
+    query: text("query").notNull(),
+    family: text("family"),
+    destination: text("destination"),
+    position: integer("position"),
+    title: text("title"),
+    snippet: text("snippet"),
+    relevance: text("relevance").notNull(),
+    observedAt: timestamp("observed_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("discovery_evidence_project_post_query_idx").on(t.projectId, t.postId, t.query),
+    index("discovery_evidence_project_subreddit_idx").on(t.projectId, t.subreddit),
+  ],
+);
+
+/**
+ * Where a candidate came from, one row per way we found it. The same post can
+ * arrive from a keyword search, a scoped search, a listing and Google, and the
+ * per-source counters are only honest if every one of those is recorded.
+ */
+export const candidateSources = pgTable(
+  "candidate_sources",
+  {
+    id: id(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    postId: text("post_id")
+      .notNull()
+      .references(() => redditPosts.id, { onDelete: "cascade" }),
+    /** search, scoped, listing or serp. */
+    sourceKind: text("source_kind").notNull(),
+    /** The query, community or keyword that produced it. */
+    sourceKey: text("source_key").notNull(),
+    firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("candidate_sources_project_post_source_idx").on(
+      t.projectId,
+      t.postId,
+      t.sourceKind,
+      t.sourceKey,
+    ),
+  ],
 );
 
 export const leads = pgTable(

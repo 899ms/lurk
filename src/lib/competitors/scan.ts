@@ -88,10 +88,10 @@ async function scanOne(
   competitor: string,
 ): Promise<{ read: number; mentions: number; costUsd: number }> {
   await writeProgress(jobId, `Searching Reddit for ${competitor}`);
-  const found = await fetchSearch(ctx, competitor, "week");
+  const found = await fetchSearch(ctx, competitor, { timeframe: "week" });
   let costUsd = found.costUsd;
   const known = await knownMentionPosts(ctx.projectId, competitor);
-  const fresh = [...found.value]
+  const fresh = [...found.value.posts]
     .filter((post) => !known.has(post.id))
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
     .slice(0, MENTION_POSTS_PER_COMPETITOR);

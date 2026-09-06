@@ -20,6 +20,27 @@ describe("tiers", () => {
     expect(TIERS.connected.feedWindowDays).toBe(TIERS.free.feedWindowDays);
   });
 
+  it("gives every tier a whole retrieval budget, connected wider than free", () => {
+    const budget = [
+      "discoveryQueries",
+      "discoveryQueriesMax",
+      "searchesPerScan",
+      "scopedSearchesPerScan",
+      "listingPilotsPerScan",
+      "serpQueriesPerDay",
+      "searchPagesPerQuery",
+      "hydrationPerScan",
+    ] as const;
+    for (const key of budget) {
+      expect(TIERS.free[key]).toBeGreaterThan(0);
+      expect(TIERS.connected[key]).toBeGreaterThan(TIERS.free[key]);
+    }
+    expect(TIERS.free.discoveryQueries).toBe(8);
+    expect(TIERS.free.discoveryQueriesMax).toBe(12);
+    expect(TIERS.free.discoveryRefreshDays).toBe(7);
+    expect(TIERS.connected.discoveryRefreshDays).toBeLessThan(TIERS.free.discoveryRefreshDays);
+  });
+
   it("removes every limit when self-hosted", () => {
     expect(limitsFor("free", true)).toBeNull();
     expect(limitsFor("free", false)).toBe(TIERS.free);
