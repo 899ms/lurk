@@ -357,9 +357,6 @@
   font-size: 11px;
   color: var(--fg-muted);
 }
-.seo-flow-label br {
-  display: none;
-}
 .seo-flow-label svg {
   width: 14px;
   height: 14px;
@@ -609,19 +606,34 @@
   border: 1px solid var(--m-rule);
   font-size: 10px;
 }
-.tracked-product {
+.theme-count {
+  display: inline-block;
+  margin-top: 10px;
+  font-size: 10px;
+  line-height: 16px;
+  color: var(--fg-muted);
+}
+.mention-tally {
+  display: flex;
+  gap: 8px;
+}
+.mention-tally > span {
+  flex: 1;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 16px;
+  gap: 8px;
+  padding: 12px 14px;
   background: var(--m-wash);
   border-radius: var(--radius-control);
-  font-size: 14px;
+  font-size: 13px;
 }
-.tracked-product span {
+.mention-tally strong {
   margin-left: auto;
-  font-size: 10px;
-  color: var(--fg-muted);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.marketing .mention-lede {
+  color: var(--fg);
 }
 .wallet-story {
   display: grid;
@@ -785,6 +797,9 @@
   }
   .seo-data-table {
     min-width: 600px;
+  }
+  .mention-tally {
+    flex-direction: column;
   }
   .reply-grid .draft-preview {
     margin-top: 0;

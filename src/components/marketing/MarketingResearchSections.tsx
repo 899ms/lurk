@@ -3,7 +3,7 @@ import { EyebrowLink } from "./EyebrowLink";
 import { BrandImage } from "./BrandImage";
 import { ThreadIdentity } from "./ThreadIdentity";
 import { MENTION_THREAD } from "./mockContent";
-import { SAVED_THEMES } from "./researchContent";
+import { MENTION_TALLY, SAVED_THEMES } from "./researchContent";
 
 export function MarketingResearchSections() {
   return (
@@ -27,6 +27,9 @@ export function MarketingResearchSections() {
             <article key={theme.label}>
               <h3>{theme.label}</h3>
               <p>{theme.summary}</p>
+              <span className="theme-count">
+                {theme.leads} saved lead{theme.leads === 1 ? "" : "s"}
+              </span>
             </article>
           ))}
           <small>
@@ -39,14 +42,25 @@ export function MarketingResearchSections() {
             <MessageSquare />
             Competitor mention<span className="sentiment-label">Negative</span>
           </div>
-          <div className="tracked-product">
-            <BrandImage
-              name="Google Forms"
-              domain="forms.google.com"
-              size={28}
-            />
-            Google Forms<span>Named competitor</span>
+          <div className="mention-tally">
+            {MENTION_TALLY.competitors.map((product) => (
+              <span key={product.name}>
+                <BrandImage
+                  name={product.name}
+                  domain={product.domain}
+                  size={20}
+                />
+                {product.name}
+                <strong>{product.mentions}</strong>
+              </span>
+            ))}
           </div>
+          <p className="mention-lede">
+            {MENTION_TALLY.negative} of {MENTION_TALLY.total} saved mentions
+            reads as negative. The rest are neutral, mostly someone sharing a
+            form link rather than comparing tools. This is the negative one, and
+            it is about Google Forms.
+          </p>
           <ThreadIdentity thread={MENTION_THREAD} />
           <a
             className="fragment-subject"

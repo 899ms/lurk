@@ -19,10 +19,10 @@ export function MarketingSeoStory() {
           the day you write it.
         </h2>
         <p>
-          Find threads that already rank for what you sell. A useful answer can
-          keep helping people who discover the discussion later. AI answers also
-          link to public discussions - but lurk does not claim that these
-          specific threads are cited, or that replying improves rankings.
+          These threads already rank for what you sell, and search results
+          increasingly point people at the discussion itself. A useful answer
+          there keeps being read long after the day you write it. lurk shows you
+          the position it saved; it does not promise to move it.
         </p>
         <a
           className="fragment-link"
@@ -87,11 +87,7 @@ export function MarketingSeoStory() {
             </div>
             <div className="seo-flow-label">
               <ArrowDown />
-              <span>
-                The same thread.
-                <br />
-                More context.
-              </span>
+              <span>The same thread. More context.</span>
             </div>
             <div className="seo-table-fragment">
               <div className="fragment-title">
