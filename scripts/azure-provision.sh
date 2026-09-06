@@ -166,7 +166,7 @@ if ! exists az postgres flexible-server show -n "$PG_SERVER" -g "$RESOURCE_GROUP
       --tier Burstable --sku-name Standard_B1ms \
       --storage-size 32 --version 17 \
       --admin-user "$PG_ADMIN" --admin-password "$(env_get PG_ADMIN_PASSWORD)" \
-      --public-access None --yes -o none
+      --public-access Enabled --yes -o none
 fi
 run az postgres flexible-server db create \
   -g "$RESOURCE_GROUP" -s "$PG_SERVER" -n "$PG_DB" -o none || echo "database already present"
