@@ -67,3 +67,41 @@
   --m-shadow-ink: oklch(0 0 0 / 0.35);
   --m-outline: oklch(1 0 0 / 0.12);
 }
+
+/* Editorial below-the-fold vocabulary, scoped away from the app. */
+.marketing {
+  --m-page: oklch(1 0 0);
+  --m-wash: oklch(0.983 0.002 230);
+  --m-rule: oklch(0.92 0.002 230);
+  --m-link: oklch(0.53 0.135 240);
+  --m-lead-word: oklch(0.62 0.065 235);
+  --m-pink: oklch(0.9 0.062 350);
+  --m-teal: oklch(0.85 0.07 220);
+  --m-mint: oklch(0.89 0.058 160);
+  --m-lilac: oklch(0.86 0.063 290);
+  --m-pastel-light: oklch(0.99 0.012 95);
+  --m-bar: oklch(0.9 0 0);
+  --m-bar-accent: oklch(0.57 0.195 261);
+  --m-night: oklch(0.18 0.012 230);
+  --m-night-panel: oklch(0.235 0.018 230);
+  --m-night-ink: oklch(0.96 0 0);
+  --m-night-muted: oklch(0.74 0.012 230);
+  --m-night-line: oklch(0.4 0.012 230);
+  --m-radius-tile: 11.2px;
+  --m-radius-bar: 2px;
+  --m-fragment-shadow: 0 1px 2px var(--m-shadow-ink), 0 12px 28px -12px var(--m-shadow-ink);
+}
+[data-theme="dark"] .marketing {
+  --m-page: var(--bg);
+  --m-wash: oklch(0.19 0.007 230);
+  --m-rule: oklch(0.28 0.005 230);
+  --m-link: oklch(0.78 0.1 230);
+  --m-lead-word: oklch(0.73 0.06 235);
+  --m-pink: oklch(0.34 0.045 350);
+  --m-teal: oklch(0.33 0.052 220);
+  --m-mint: oklch(0.35 0.04 160);
+  --m-lilac: oklch(0.33 0.05 290);
+  --m-pastel-light: oklch(0.4 0.025 240);
+  --m-bar: oklch(0.35 0 0);
+  --m-bar-accent: oklch(0.66 0.14 250);
+}
