@@ -1,11 +1,17 @@
 name: Deploy
 
-# Stub. The hosted instance has no domain or Azure resource group yet, so the
-# job is written out but never runs. Turning it on means removing `if: false`
-# and setting the repository variables and secrets named below.
+# Turning this on means removing `if: false` below and setting the repository
+# variables and secrets listed in the deploy section of README.md. Everything
+# else is finished: the job builds the image, pushes it to the registry, rolls
+# the container app, and waits for the public health path to answer.
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
 
 jobs:
   deploy:
@@ -18,6 +24,7 @@ jobs:
       RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
       CONTAINER_APP: ${{ vars.AZURE_CONTAINER_APP }}
       REGISTRY: ${{ vars.AZURE_CONTAINER_REGISTRY }}
+      HEALTH_URL: ${{ vars.APP_HEALTH_URL }}
       IMAGE: reddit-leads
     steps:
       - uses: actions/checkout@v4
@@ -31,21 +38,40 @@ jobs:
 
       - name: Build and push the image
         run: |
+          set -euo pipefail
           az acr login --name "$REGISTRY"
-          docker build -t "$REGISTRY.azurecr.io/$IMAGE:${{ github.sha }}" .
-          docker push "$REGISTRY.azurecr.io/$IMAGE:${{ github.sha }}"
+          TAG="$REGISTRY.azurecr.io/$IMAGE:${{ github.sha }}"
+          docker build -t "$TAG" .
+          docker push "$TAG"
 
+      # The image applies its own migrations from docker-entrypoint.sh before it
+      # serves, and the app is pinned to one replica, so a deploy runs them once.
       - name: Roll the container app
         run: |
+          set -euo pipefail
           az containerapp update \
             --name "$CONTAINER_APP" \
             --resource-group "$RESOURCE_GROUP" \
-            --image "$REGISTRY.azurecr.io/$IMAGE:${{ github.sha }}"
+            --image "$REGISTRY.azurecr.io/$IMAGE:${{ github.sha }}" \
+            --revision-suffix "s$(echo '${{ github.sha }}' | cut -c1-8)" \
+            --output none
 
-      - name: Wait for the new revision to go healthy
+      - name: Show the active revisions
         run: |
           az containerapp revision list \
             --name "$CONTAINER_APP" \
             --resource-group "$RESOURCE_GROUP" \
-            --query "[?properties.active].{name:name,state:properties.runningState}" \
+            --query "[?properties.active].{name:name,state:properties.runningState,traffic:properties.trafficWeight}" \
             --output table
+
+      # The step's own timeout is the whole budget for the new revision to start
+      # serving; raise it here if a cold start ever needs longer.
+      - name: Wait for the deployed instance to answer
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          until [ "$(curl -s -o /dev/null -w '%{http_code}' "$HEALTH_URL")" = "200" ]; do
+            echo "waiting for $HEALTH_URL"
+            sleep 5
+          done
+          echo "$HEALTH_URL answered 200"
