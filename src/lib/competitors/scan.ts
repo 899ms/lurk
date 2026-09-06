@@ -1,0 +1,151 @@
+import { and, eq } from "drizzle-orm";
+import { db } from "@/db";
+import { competitorMentions } from "@/db/schema/competitors";
+import { writeProgress } from "@/jobs/enqueue";
+import { clientForUser } from "@/lib/anyapi";
+import type { FetchContext } from "@/lib/reddit/fetch";
+import { fetchPost, fetchSearch } from "@/lib/reddit/skus";
+import type { StoredPost } from "@/lib/reddit/store";
+import { loadScanProject } from "@/lib/scan/project";
+import { capped, scanIntervalHours, tierForUser } from "@/lib/tier";
+import { RETENTION_DAYS, type TierLimits } from "@/lib/tiers";
+import { classifyMentions, type MentionCandidate } from "./classify";
+
+const HOUR_MS = 60 * 60 * 1000;
+const RETENTION_MS = RETENTION_DAYS * 24 * HOUR_MS;
+
+/** How many of the week's newest posts about one competitor are read in full. */
+export const MENTION_POSTS_PER_COMPETITOR = 10;
+
+export type CompetitorScanOutcome = {
+  competitors: number;
+  read: number;
+  mentions: number;
+  costUsd: number;
+};
+
+/** The tier decides how many competitors a project may watch. */
+export function competitorsToScan(names: string[], limits: TierLimits | null): string[] {
+  return capped(names, limits?.competitors);
+}
+
+/** Posts this project already holds a mention of, for this competitor. */
+async function knownMentionPosts(projectId: string, competitor: string): Promise<Set<string>> {
+  const rows = await db()
+    .select({ postId: competitorMentions.postId })
+    .from(competitorMentions)
+    .where(
+      and(
+        eq(competitorMentions.projectId, projectId),
+        eq(competitorMentions.competitor, competitor),
+      ),
+    );
+  return new Set(rows.map((row) => row.postId));
+}
+
+function toCandidate(post: StoredPost): MentionCandidate {
+  return {
+    id: post.id,
+    title: post.title,
+    subreddit: post.subreddit,
+    body: post.body ?? "",
+  };
+}
+
+async function writeMentions(
+  projectId: string,
+  competitor: string,
+  posts: StoredPost[],
+  verdicts: Map<string, { sentiment: string; summary: string }>,
+): Promise<number> {
+  const rows = posts
+    .map((post) => ({ post, verdict: verdicts.get(post.id) }))
+    .filter((entry): entry is { post: StoredPost; verdict: { sentiment: string; summary: string } } =>
+      entry.verdict !== undefined,
+    )
+    .map((entry) => ({
+      projectId,
+      competitor,
+      postId: entry.post.id,
+      sentiment: entry.verdict.sentiment,
+      summary: entry.verdict.summary,
+      foundAt: new Date(),
+    }));
+  if (rows.length === 0) {
+    return 0;
+  }
+  const written = await db()
+    .insert(competitorMentions)
+    .values(rows)
+    .onConflictDoNothing()
+    .returning({ id: competitorMentions.id });
+  return written.length;
+}
+
+async function scanOne(
+  ctx: FetchContext,
+  jobId: string,
+  competitor: string,
+): Promise<{ read: number; mentions: number; costUsd: number }> {
+  await writeProgress(jobId, `Searching Reddit for ${competitor}`);
+  const found = await fetchSearch(ctx, competitor, "week");
+  let costUsd = found.costUsd;
+  const known = await knownMentionPosts(ctx.projectId, competitor);
+  const fresh = [...found.value]
+    .filter((post) => !known.has(post.id))
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+    .slice(0, MENTION_POSTS_PER_COMPETITOR);
+
+  await writeProgress(jobId, `Reading ${fresh.length} posts about ${competitor}`);
+  const full: StoredPost[] = [];
+  for (const post of fresh) {
+    const result = await fetchPost(ctx, post.url, RETENTION_MS);
+    costUsd += result.costUsd;
+    full.push(result.value[0] ?? post);
+  }
+  if (full.length === 0) {
+    return { read: 0, mentions: 0, costUsd };
+  }
+  const verdicts = await classifyMentions(ctx.projectId, competitor, full.map(toCandidate));
+  const mentions = await writeMentions(ctx.projectId, competitor, full, verdicts);
+  return { read: full.length, mentions, costUsd };
+}
+
+/**
+ * One pass over the competitors a project watches: this week's newest Reddit
+ * posts naming each, read in full, then judged in one call per competitor.
+ */
+export async function runCompetitorScan(
+  projectId: string,
+  jobId: string,
+): Promise<CompetitorScanOutcome> {
+  const project = await loadScanProject(projectId);
+  if (!project) {
+    throw new Error("That project no longer exists");
+  }
+  const { limits } = await tierForUser(project.userId);
+  const names = competitorsToScan(project.competitors, limits);
+  if (names.length === 0) {
+    await writeProgress(jobId, "No competitors to watch yet");
+    return { competitors: 0, read: 0, mentions: 0, costUsd: 0 };
+  }
+  const ctx: FetchContext = {
+    projectId,
+    funded: await clientForUser(project.userId),
+    maxAgeMs: scanIntervalHours(limits) * HOUR_MS,
+  };
+  const outcome: CompetitorScanOutcome = {
+    competitors: names.length,
+    read: 0,
+    mentions: 0,
+    costUsd: 0,
+  };
+  for (const name of names) {
+    const one = await scanOne(ctx, jobId, name);
+    outcome.read += one.read;
+    outcome.mentions += one.mentions;
+    outcome.costUsd += one.costUsd;
+  }
+  await writeProgress(jobId, "Finished");
+  return outcome;
+}
