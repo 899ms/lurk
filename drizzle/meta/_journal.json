@@ -43,6 +43,13 @@
       "when": 1788684069634,
       "tag": "0005_swift_mauler",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788685906507,
+      "tag": "0006_null_prerubric_scales",
+      "breakpoints": true
     }
   ]
 }
