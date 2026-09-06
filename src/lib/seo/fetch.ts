@@ -14,11 +14,8 @@ import { redditResults, type GoogleResult } from "./links";
 
 export type StoredResult = typeof serpResults.$inferSelect;
 
-/**
- * The search_runs kind for a Google search. FetchKind is owned by the Reddit
- * fetch helper and does not name this one yet; the stored column is text.
- */
-const GOOGLE_KIND: FetchKind = "serp" as string as FetchKind;
+/** The search_runs kind for a Google search. */
+const GOOGLE_KIND: FetchKind = "serp";
 
 /** Every Google search this app makes asks for United States results. */
 export const SEO_GEO = "us";

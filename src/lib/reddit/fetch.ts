@@ -3,14 +3,15 @@ import { and, desc, eq, gte, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { searchRuns, usageLedger } from "@/db/schema";
 import type { FundedClient } from "@/lib/anyapi";
-/** One search_runs row per kind of thing we ask Reddit for. */
+/** One search_runs row per kind of thing we fetch, on Reddit or on Google. */
 export type FetchKind =
   | "keyword"
   | "subreddit_posts"
   | "post"
   | "comments"
   | "subreddit"
-  | "profile";
+  | "profile"
+  | "serp";
 
 export type FetchContext = { projectId: string; funded: FundedClient; maxAgeMs: number };
 
