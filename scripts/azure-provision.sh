@@ -260,14 +260,33 @@ run az containerapp update -n "$APP_NAME" -g "$RESOURCE_GROUP" --set-env-vars "A
 
 if [ -n "$DOMAIN" ]; then
   say "Custom domain $DOMAIN"
+  VERIFICATION_ID="$(capture az containerapp show -n "$APP_NAME" -g "$RESOURCE_GROUP" \
+    --query properties.customDomainVerificationId -o tsv)"
+  STATIC_IP="$(capture az containerapp env show -n "$ENV_NAME" -g "$RESOURCE_GROUP" \
+    --query properties.staticIp -o tsv)"
+  # An apex domain has to be an A record to the environment's address, because a
+  # CNAME cannot sit at the root of a zone. A subdomain uses a CNAME instead.
+  if [ "$(printf '%s' "$DOMAIN" | tr -cd '.' | wc -c)" -le 1 ]; then
+    APEX_RECORD="A     $DOMAIN -> $STATIC_IP"
+    VALIDATION=TXT
+  else
+    APEX_RECORD="CNAME $DOMAIN -> $FQDN"
+    VALIDATION=CNAME
+  fi
   cat <<DNS
-Point DNS at the app before this step can pass validation:
-  CNAME $DOMAIN -> $FQDN
-  TXT   asuid.$DOMAIN -> $(capture az containerapp show -n "$APP_NAME" -g "$RESOURCE_GROUP" --query properties.customDomainVerificationId -o tsv)
+Publish these first. Azure reads them itself, so they must resolve publicly and
+must not be proxied by a CDN that answers with its own address and certificate.
+  $APEX_RECORD
+  TXT   asuid.$DOMAIN -> $VERIFICATION_ID
 DNS
-  run az containerapp hostname add -n "$APP_NAME" -g "$RESOURCE_GROUP" --hostname "$DOMAIN" -o none
+  if ! run az containerapp hostname add -n "$APP_NAME" -g "$RESOURCE_GROUP" \
+       --hostname "$DOMAIN" -o none; then
+    echo "Azure cannot see those records yet. Publish them and run this script again."
+    echo "Everything else is provisioned; only the custom domain is outstanding."
+    exit 0
+  fi
   run az containerapp env certificate create -n "$ENV_NAME" -g "$RESOURCE_GROUP" \
-    --hostname "$DOMAIN" --validation-method CNAME --certificate-name "$BASE-cert" -o none
+    --hostname "$DOMAIN" --validation-method "$VALIDATION" --certificate-name "$BASE-cert" -o none
   run az containerapp hostname bind -n "$APP_NAME" -g "$RESOURCE_GROUP" \
     --hostname "$DOMAIN" --environment "$ENV_NAME" --certificate "$BASE-cert" -o none
 else

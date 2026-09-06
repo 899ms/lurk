@@ -231,13 +231,24 @@ What it creates, all in `centralus` by default and all on the smallest sensible 
 The app is pinned to exactly one replica because `RUN_SCHEDULER=true` must run on exactly
 one process.
 
-A custom domain is optional and off until you have one. Set `DOMAIN` and the script adds the
-hostname, asks for a managed certificate and binds it, after printing the CNAME and
-`asuid` TXT records you must publish first:
+### The custom domain
+
+Set `DOMAIN` and the script prints the records to publish, adds the hostname, asks for a
+managed certificate and binds it. If the records are not visible yet it says so and leaves
+everything else provisioned, so it is safe to run again once DNS has propagated:
 
 ```bash
-RESOURCE_GROUP=reddit-leads-prod DOMAIN=leads.example.com scripts/azure-provision.sh
+RESOURCE_GROUP=reddit-leads-prod DOMAIN=lurk.so scripts/azure-provision.sh
 ```
+
+An apex domain such as `lurk.so` needs an `A` record to the environment's address, because a
+CNAME cannot sit at the root of a zone; a subdomain gets a `CNAME` to the app instead. The
+script picks the right shape and the matching certificate validation method for you.
+
+Azure resolves those records itself to prove you own the name and to issue the certificate,
+so they must be served as published. Behind a proxying CDN, Cloudflare's orange cloud
+included, Azure sees the proxy's address and its certificate instead and validation never
+passes. Set the records to DNS-only until the certificate is issued.
 
 ### Let GitHub deploy
 
