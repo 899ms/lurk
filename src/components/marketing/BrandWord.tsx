@@ -19,7 +19,9 @@ export function BrandStack() {
   return (
     <span className="brand-stack" aria-label="Google AI Overviews, ChatGPT and Perplexity">
       {ANSWER_ENGINES.map((name) => (
-        <BrandImage key={name} name={name} src={BRAND_MARKS[name]} />
+        <span key={name} className="brand-stack-item">
+          <BrandImage name={name} src={BRAND_MARKS[name]} />
+        </span>
       ))}
     </span>
   );

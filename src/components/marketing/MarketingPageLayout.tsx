@@ -1,4 +1,4 @@
-import { ArrowUpRight, Check } from "lucide-react";
+import { Check } from "lucide-react";
 import { MarketingNav } from "./MarketingNav";
 import { MarketingFooter } from "./MarketingFooter";
 import { MarketingShowcase } from "./MarketingShowcase";
@@ -20,25 +20,14 @@ export function MarketingPageLayout({ variant }: { variant: Variant }) {
         <MarketingNav />
         <section className="hero-layout" aria-labelledby="marketing-title">
           <div className="hero-copy">
-            <a className="hero-eyebrow" href="#self-host">
-              <span className="status-dot" />
-              Free to use. Open source.
-              <ArrowUpRight />
-            </a>
             <h1 id="marketing-title">
               Get your site into <BrandWord name="Google" />
               <br className="hero-break" /> and <BrandStack /> AI answers. Free.
             </h1>
-            <div className="hero-description">
-              <p>
-                <BrandWord name="Reddit" /> threads rank on Google and get cited by ChatGPT,
-                Perplexity and AI Overviews.
-              </p>
-              <p>
-                lurk finds the threads about what you sell, scores who is asking, and drafts
-                your reply. We do the finding for free. You post.
-              </p>
-            </div>
+            <p className="hero-description">
+              <BrandWord name="Reddit" /> threads are what search and AI answers cite. lurk finds
+              the ones about what you sell, scores who is asking, and drafts your reply. You post.
+            </p>
             <CtaRow />
             <div className="hero-promises">
               <span>
@@ -52,9 +41,7 @@ export function MarketingPageLayout({ variant }: { variant: Variant }) {
             </div>
           </div>
           <div className="hero-product">
-            <p className="preview-caption">
-              Real saved <BrandWord name="Reddit" /> examples. Preview, not a live feed.
-            </p>
+            <p className="preview-caption">Preview built from real saved threads.</p>
             <MarketingShowcase />
           </div>
         </section>
