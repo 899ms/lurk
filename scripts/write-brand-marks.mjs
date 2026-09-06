@@ -13,7 +13,7 @@
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
-import { siReddit, siDiscord } from "simple-icons";
+import { siReddit, siDiscord, siPerplexity, siGooglegemini, siClaude } from "simple-icons";
 
 const OUT = new URL("../public/brands/", import.meta.url);
 
@@ -70,3 +70,14 @@ const slack = await fetch(slackSource);
 if (!slack.ok) throw new Error("Cannot fetch the pinned Slack mark");
 await writeFile(new URL("slack.svg", OUT), (await slack.text()).replace('<svg ', '<svg fill="#4A154B" '));
 await writeFile(new URL("discord.svg", OUT), siDiscord.svg.replace('<svg ', `<svg fill="#${siDiscord.hex}" `));
+
+// The answer engines that cite Reddit threads. OpenAI left simple-icons in v15
+// as well; the ChatGPT mark is its last published official path.
+const openaiSource = "https://raw.githubusercontent.com/simple-icons/simple-icons/14.15.0/icons/openai.svg";
+const openai = await fetch(openaiSource);
+if (!openai.ok) throw new Error("Cannot fetch the pinned OpenAI mark");
+await writeFile(new URL("chatgpt.svg", OUT), (await openai.text()).replace('<svg ', '<svg fill="#000000" '));
+for (const [file, icon] of [["perplexity.svg", siPerplexity], ["gemini.svg", siGooglegemini], ["claude.svg", siClaude]]) {
+  await writeFile(new URL(file, OUT), icon.svg.replace('<svg ', `<svg fill="#${icon.hex}" `));
+}
+console.log("wrote chatgpt, perplexity, gemini and claude marks");

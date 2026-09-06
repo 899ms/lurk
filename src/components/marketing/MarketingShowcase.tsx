@@ -4,9 +4,10 @@ import { PillTabs } from "@/components/PillTabs";
 import { AppMockLeads } from "./AppMockLeads";
 import { AppMockSeo } from "./AppMockSeo";
 import { AppMockUsage } from "./AppMockUsage";
+import { BRAND_MARKS } from "./BrandWord";
 const TABS = [
   { id: "leads", label: "Leads" },
-  { id: "seo", label: "Reddit SEO" },
+  { id: "seo", label: "Reddit SEO", mark: BRAND_MARKS.Reddit },
   { id: "usage", label: "Data usage" },
 ];
 

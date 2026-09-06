@@ -27,8 +27,10 @@
 .hero-eyebrow { display: inline-flex; align-items: center; gap: 8px; padding: 5px 10px; margin-bottom: 20px; border-radius: var(--m-radius-pill); box-shadow: inset 0 0 0 1px var(--m-outline); font-size: 12px; background: var(--m-glass); }
 .hero-eyebrow svg { width: 12px; height: 12px; }
 .status-dot { display: inline-block; width: 6px; height: 6px; border-radius: var(--m-radius-pill); background: var(--m-accent); }
-.hero-reddit { display: inline-flex; align-items: center; gap: 9px; }
-.hero-reddit .brand-image { width: 0.75em; height: 0.75em; }
+.brand-word { display: inline-flex; align-items: center; gap: 0.3em; white-space: nowrap; vertical-align: baseline; }
+.brand-word .brand-image { width: 0.8em; height: 0.8em; }
+.hero-layout h1 .brand-word { gap: 9px; }
+.hero-layout h1 .brand-word .brand-image { width: 0.75em; height: 0.75em; }
 .hero-description { max-width: 590px; margin: 20px auto; font-size: 15px; line-height: 1.55; color: var(--fg-muted); }
 .hero-description p:first-child { color: var(--fg); }
 .hero-copy .cta-row { justify-content: center; }
@@ -135,3 +137,6 @@
 }
 @media (prefers-reduced-motion: reduce) { .marketing a, .marketing button { transition: none; }
 }
+
+/* The ChatGPT mark is published black; on the dark theme it is inverted like the wordmark. */
+[data-theme="dark"] .brand-image[src$="chatgpt.svg"] { filter: invert(1); }

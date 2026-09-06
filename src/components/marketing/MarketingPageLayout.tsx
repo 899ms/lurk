@@ -5,7 +5,7 @@ import { MarketingShowcase } from "./MarketingShowcase";
 import { MarketingFeatures } from "./MarketingFeatures";
 import { MotionPanel } from "./MotionPanel";
 import { CtaRow } from "./CtaRow";
-import { BrandImage } from "./BrandImage";
+import { BrandWord } from "./BrandWord";
 import type { Variant } from "./VariantSwitcher";
 import "./marketing.css";
 import "./below-fold.css";
@@ -27,10 +27,7 @@ export function MarketingPageLayout({ variant }: { variant: Variant }) {
             </a>
             <h1 id="marketing-title">
               Someone on{" "}
-              <span className="hero-reddit">
-                <BrandImage name="Reddit" src="/brands/reddit.svg" size={42} />
-                Reddit
-              </span>
+              <BrandWord name="Reddit" />
               <br className="hero-break" /> is looking for what you sell.
             </h1>
             <div className="hero-description">
@@ -54,7 +51,7 @@ export function MarketingPageLayout({ variant }: { variant: Variant }) {
           </div>
           <div className="hero-product">
             <p className="preview-caption">
-              Real saved Reddit examples. Preview, not a live feed.
+              Real saved <BrandWord name="Reddit" /> examples. Preview, not a live feed.
             </p>
             <MarketingShowcase />
           </div>

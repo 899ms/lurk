@@ -1,37 +1,38 @@
 import Link from "next/link";
 import { Wordmark } from "@/components/Wordmark";
+import { BrandWord } from "./BrandWord";
 
-const COLUMNS = [
+const COLUMNS: { title: string; links: [React.ReactNode, string, string][] }[] = [
   {
     title: "Discover",
     links: [
-      ["Leads", "#features"],
-      ["Reddit SEO", "#seo"],
-      ["Competitors", "#insights"],
+      ["Leads", "#features", "leads"],
+      [<BrandWord name="Reddit" label="Reddit SEO" key="seo" />, "#seo", "seo"],
+      ["Competitors", "#drafts", "competitors"],
     ],
   },
   {
     title: "Understand",
     links: [
-      ["Scores and reasons", "#features"],
-      ["Community rules", "#rules"],
-      ["Insights", "#insights"],
+      ["Scores and reasons", "#features", "scores"],
+      ["Community rules", "#drafts", "rules"],
+      ["Insights", "#drafts", "insights"],
     ],
   },
   {
     title: "Your workflow",
     links: [
-      ["Copy a draft", "#drafts"],
-      ["Alerts", "#alerts"],
-      ["Data costs", "#costs"],
+      ["Copy a draft", "#drafts", "draft"],
+      ["Alerts", "#drafts", "alerts"],
+      ["Data costs", "#costs", "costs"],
     ],
   },
   {
     title: "Build with it",
     links: [
-      ["REST schema", "/openapi.json"],
-      ["MCP agent guide", "/agent-guide.md"],
-      ["Self-host", "#self-host"],
+      ["REST schema", "/openapi.json", "schema"],
+      ["MCP agent guide", "/agent-guide.md", "guide"],
+      ["Self-host", "#self-host", "self-host"],
     ],
   },
 ];
@@ -43,8 +44,8 @@ export function MarketingFooter() {
         {COLUMNS.map((column) => (
           <div key={column.title}>
             <span>{column.title}</span>
-            {column.links.map(([label, href]) => (
-              <a key={label} href={href}>
+            {column.links.map(([label, href, key]) => (
+              <a key={key} href={href}>
                 {label}
               </a>
             ))}

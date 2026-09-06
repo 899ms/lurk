@@ -2,7 +2,8 @@
 
 import { cn } from "@/lib/utils";
 
-export type PillTab = { id: string; label: string };
+/** `mark` is a brand image shown before the label, for a tab named after a platform. */
+export type PillTab = { id: string; label: string; mark?: string };
 
 type PillTabsProps = {
   tabs: PillTab[];
@@ -26,12 +27,17 @@ export function PillTabs({ tabs, activeId, onSelect, className }: PillTabsProps)
           aria-selected={tab.id === activeId}
           onClick={() => onSelect(tab.id)}
           className={cn(
-            "transition-motion rounded-control px-3 py-1.5 text-small transition-colors",
+            "transition-motion inline-flex items-center gap-1.5 rounded-control px-3 py-1.5 text-small transition-colors",
             tab.id === activeId
               ? "border bg-surface text-fg"
               : "border border-transparent text-fg-muted hover:text-fg",
           )}
         >
+          {tab.mark ? (
+            // Brand art from public/brands; no image proxy needed.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={tab.mark} alt="" width={14} height={14} />
+          ) : null}
           {tab.label}
         </button>
       ))}

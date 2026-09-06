@@ -1,6 +1,7 @@
 import { Check, LockKeyhole, Search, X } from "lucide-react";
 import { SubredditChip } from "@/components/SubredditChip";
 import { BrandImage } from "./BrandImage";
+import { BrandWord } from "./BrandWord";
 import { EyebrowLink } from "./EyebrowLink";
 import { MOCK_SEO } from "./mockContent";
 import { SEO_THREADS } from "./researchContent";
@@ -19,10 +20,14 @@ export function MarketingSeoTiles() {
   return (
     <section id="seo" className="seo-tiles" data-proof="seo">
       <header className="left-heading">
-        <EyebrowLink href="#drafts">Reddit SEO</EyebrowLink>
+        <EyebrowLink href="#drafts">
+          <BrandWord name="Reddit" /> SEO
+        </EyebrowLink>
         <h2>A reply can outlive the day you write it.</h2>
         <p>
-          Google already ranks Reddit threads for what you sell.
+          <BrandWord name="Google" /> already ranks <BrandWord name="Reddit" /> threads for what
+          you sell, and <BrandWord name="Google AI Overviews" />, <BrandWord name="ChatGPT" /> and{" "}
+          <BrandWord name="Perplexity" /> cite the same threads when they answer.
           <br />
           lurk finds them, saves the position, and shows which ones name a competitor.
         </p>
@@ -49,8 +54,9 @@ export function MarketingSeoTiles() {
             </div>
           </div>
           <figcaption>
-            <strong>Ranked threads</strong> Your keywords, searched on Google, filtered to the
-            Reddit discussions that already rank.
+            <strong>Ranked threads</strong> Your keywords, searched on{" "}
+            <BrandWord name="Google" />, filtered to the <BrandWord name="Reddit" /> discussions
+            that already rank.
           </figcaption>
         </figure>
         <figure className="pastel-tile">
