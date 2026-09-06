@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { digestSubject, renderDigestHtml, renderDigestText } from "@/lib/alerts/digest";
 import { payloadFor, sendToChannel } from "@/lib/alerts/send";
 import { emailSender } from "@/lib/alerts/config";
@@ -219,6 +219,12 @@ describe("the digest email", () => {
 });
 
 describe("delivery", () => {
+  /** Email delivery reads the app config, which wants these two whatever it is asked. */
+  beforeEach(() => {
+    vi.stubEnv("DATABASE_URL", "postgres://reddit_leads@localhost:5433/reddit_leads");
+    vi.stubEnv("APP_ENCRYPTION_KEY", Buffer.alloc(32).toString("base64"));
+  });
+
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();

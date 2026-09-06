@@ -11,7 +11,7 @@ import { SubredditChip } from "@/components/SubredditChip";
 import { HighlightedBody } from "@/components/leads/HighlightedBody";
 import { LeadActions } from "@/components/leads/LeadActions";
 import { PromoPolicyBadge } from "@/components/leads/PromoPolicyBadge";
-import { relativeAge } from "@/components/leads/ScanStatus";
+import { relativeAge } from "@/lib/format";
 import type { LeadCost } from "@/lib/feed";
 
 export type CardLead = {

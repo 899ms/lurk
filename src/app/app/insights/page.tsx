@@ -3,7 +3,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { CommunitiesTable } from "@/components/insights/CommunitiesTable";
 import { InsightsTabs, type InsightsTab } from "@/components/insights/InsightsTabs";
 import { ThemeCard } from "@/components/insights/ThemeCard";
-import { relativeAge } from "@/components/leads/ScanStatus";
+import { relativeAge } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { lastRunJob } from "@/jobs/enqueue";
 import { requireLocalUser } from "@/lib/auth";

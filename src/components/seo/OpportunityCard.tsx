@@ -1,7 +1,7 @@
 import { ArrowUp, MessageCircle } from "lucide-react";
 import { CostLine } from "@/components/CostLine";
 import { SubredditChip } from "@/components/SubredditChip";
-import { relativeAge } from "@/components/leads/ScanStatus";
+import { relativeAge } from "@/lib/format";
 import { GoogleRankBadge } from "@/components/seo/GoogleRankBadge";
 import type { KeywordCost } from "@/lib/seo/read";
 

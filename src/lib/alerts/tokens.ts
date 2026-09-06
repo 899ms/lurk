@@ -52,16 +52,6 @@ export function scoreColor(score: number): string {
   return score >= 60 ? EMAIL_COLORS.scoreWarm : EMAIL_COLORS.fgMuted;
 }
 
-/** How long ago something happened, in the feed's own short form. */
-export function ageLabel(createdAt: Date, now: Date): string {
-  const minutes = Math.max(0, Math.round((now.getTime() - createdAt.getTime()) / 60000));
-  if (minutes < 60) {
-    return `${minutes}m`;
-  }
-  const hours = Math.round(minutes / 60);
-  return hours < 24 ? `${hours}h` : `${Math.round(hours / 24)}d`;
-}
-
 export function hourLabel(hour: number): string {
   if (hour === 0) {
     return "12am";

@@ -1,7 +1,7 @@
 import { AuthorAvatar } from "@/components/AuthorAvatar";
 import { CostLine } from "@/components/CostLine";
 import { SubredditChip } from "@/components/SubredditChip";
-import { relativeAge } from "@/components/leads/ScanStatus";
+import { relativeAge } from "@/lib/format";
 import type { Sentiment } from "@/lib/competitors/classify";
 import type { MentionView } from "@/lib/competitors/read";
 import type { LeadCost } from "@/lib/feed";

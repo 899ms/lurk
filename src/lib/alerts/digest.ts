@@ -1,6 +1,6 @@
 import { PRODUCT_NAME } from "@/lib/brand";
+import { shortAge } from "@/lib/format";
 import {
-  ageLabel,
   avatarHtml,
   EMAIL_COLORS as C,
   EMAIL_FONT,
@@ -94,7 +94,7 @@ function leadRow(lead: DigestLead, digest: Digest): string {
   const meta = [
     `u/${lead.author ?? "unknown"}`,
     `r/${lead.subreddit}`,
-    ageLabel(lead.createdAt, digest.generatedAt),
+    shortAge(lead.createdAt, digest.generatedAt),
   ]
     .map(escapeHtml)
     .join(" &middot; ");
@@ -146,7 +146,7 @@ ${headerRow(digest)}${headlineRow(digest)}${body}${footerRow(digest)}
 export function renderDigestText(digest: Digest): string {
   const lines = digest.leads.map(
     (lead) =>
-      `${lead.score} - ${lead.title} (r/${lead.subreddit}, u/${lead.author ?? "unknown"}, ${ageLabel(lead.createdAt, digest.generatedAt)})\n${lead.reason ?? ""}\n${lead.url}`,
+      `${lead.score} - ${lead.title} (r/${lead.subreddit}, u/${lead.author ?? "unknown"}, ${shortAge(lead.createdAt, digest.generatedAt)})\n${lead.reason ?? ""}\n${lead.url}`,
   );
   return [
     `${digest.leads.length} new leads for ${digest.projectName} ${windowPhrase(digest)}.`,

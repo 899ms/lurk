@@ -1,4 +1,4 @@
-import { relativeAge } from "@/components/leads/ScanStatus";
+import { relativeAge } from "@/lib/format";
 import type { JobRow } from "@/jobs/enqueue";
 
 type RefreshStatusProps = { job: JobRow | null };

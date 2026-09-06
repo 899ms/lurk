@@ -3,7 +3,7 @@ import { CompetitorChip } from "@/components/competitors/CompetitorChip";
 import { MentionCard } from "@/components/competitors/MentionCard";
 import { MentionsBar } from "@/components/competitors/MentionsBar";
 import { EmptyState } from "@/components/EmptyState";
-import { relativeAge } from "@/components/leads/ScanStatus";
+import { relativeAge } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { lastRunJob } from "@/jobs/enqueue";
 import { requireLocalUser } from "@/lib/auth";
