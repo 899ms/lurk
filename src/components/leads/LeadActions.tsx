@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Copy, ExternalLink, EyeOff, ThumbsDown } from "lucide-react";
+import { Check, Copy, ExternalLink, EyeOff, PenLine, ThumbsDown } from "lucide-react";
 import { hideLeadAction, markNotFitAction } from "@/app/app/leads/actions";
 import { Button } from "@/components/ui/button";
 
@@ -13,10 +13,16 @@ const NOT_FIT_REASONS = [
   "other",
 ];
 
-type LeadActionsProps = { projectId: string; leadId: string; url: string; title: string };
+type LeadActionsProps = {
+  projectId: string;
+  leadId: string;
+  url: string;
+  title: string;
+  onDraft: () => void;
+};
 
-/** The column beside a card: open it, copy it, or take it out of the feed. */
-export function LeadActions({ projectId, leadId, url, title }: LeadActionsProps) {
+/** The column beside a card: open it, write a reply, or take it out of the feed. */
+export function LeadActions({ projectId, leadId, url, title, onDraft }: LeadActionsProps) {
   const [copied, setCopied] = useState(false);
   const [picking, setPicking] = useState(false);
   const iconClass = "size-3.5 text-fg-muted";
@@ -41,6 +47,10 @@ export function LeadActions({ projectId, leadId, url, title }: LeadActionsProps)
           </a>
         }
       />
+      <Button variant="ghost" size="sm" className="justify-start" onClick={onDraft}>
+        <PenLine className={iconClass} aria-hidden="true" />
+        Draft a reply
+      </Button>
       <Button variant="ghost" size="sm" className="justify-start" onClick={copyTitle}>
         {copied ? (
           <Check className={iconClass} aria-hidden="true" />
