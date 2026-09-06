@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
   projectCompetitors,
@@ -46,6 +46,19 @@ function threshold(raw: string): number | null {
   return value;
 }
 
+/**
+ * Bumps the version of the facts a judgement is made against, so the next scan
+ * judges every candidate again instead of trusting a verdict made against the
+ * old product. The minimum score is not one of those facts: the feed applies it
+ * when it is read, so moving it changes the next page load and nothing else.
+ */
+async function bumpProfileVersion(projectId: string) {
+  await db()
+    .update(projects)
+    .set({ profileVersion: sql`${projects.profileVersion} + 1` })
+    .where(eq(projects.id, projectId));
+}
+
 /** Saves the editable profile fields for one of the caller's projects. */
 export async function saveProfileAction(
   _previous: ProfileState,
@@ -57,17 +70,24 @@ export async function saveProfileAction(
     if (!name) {
       return { error: "A project needs a name.", saved: false };
     }
+    const facts = {
+      name,
+      url: text(formData, "url") || null,
+      pain: text(formData, "pain") || null,
+      solution: text(formData, "solution") || null,
+      targetUsers: text(formData, "targetUsers") || null,
+      geography: text(formData, "geography") || null,
+      budgetFit: text(formData, "budgetFit") || null,
+    };
+    const edited = Object.entries(facts).some(
+      ([field, value]) => project[field as keyof typeof facts] !== value,
+    );
     await db()
       .update(projects)
       .set({
-        name,
-        url: text(formData, "url") || null,
-        pain: text(formData, "pain") || null,
-        solution: text(formData, "solution") || null,
-        targetUsers: text(formData, "targetUsers") || null,
-        geography: text(formData, "geography") || null,
-        budgetFit: text(formData, "budgetFit") || null,
+        ...facts,
         scoreThreshold: threshold(text(formData, "scoreThreshold")),
+        ...(edited ? { profileVersion: sql`${projects.profileVersion} + 1` } : {}),
       })
       .where(eq(projects.id, project.id));
     revalidatePath("/app", "layout");
@@ -171,6 +191,9 @@ export async function addChipAction(
       };
     }
     await insertChip(kind, project.id, value);
+    if (kind === "competitor") {
+      await bumpProfileVersion(project.id);
+    }
     revalidatePath("/app/product");
     return { error: null };
   } catch (error) {
@@ -215,6 +238,7 @@ export async function removeChipAction(
           eq(projectCompetitors.name, value),
         ),
       );
+    await bumpProfileVersion(project.id);
   }
   revalidatePath("/app/product");
 }
@@ -228,6 +252,7 @@ export async function rebuildProfileAction(formData: FormData) {
     throw new Error("This project has no product URL to read.");
   }
   await buildProfile(project.id, user.id, project.url);
+  await bumpProfileVersion(project.id);
   revalidatePath("/app", "layout");
 }
 

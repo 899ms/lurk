@@ -39,33 +39,39 @@ function at(createdUtc: number | undefined): Date {
   return new Date((createdUtc ?? 0) * 1000);
 }
 
-function absolutePermalink(post: RawPost): string {
-  const permalink = post.permalink ?? "";
-  if (permalink.startsWith("http")) {
-    return permalink;
+/** An upstream link is sometimes a path and sometimes already absolute. */
+function absoluteLink(link: string | undefined, fallback = ""): string {
+  const value = link ?? "";
+  if (value.startsWith("http")) {
+    return value;
   }
-  return permalink ? `https://www.reddit.com${permalink}` : (post.url ?? "");
+  return value ? `https://www.reddit.com${value}` : fallback;
 }
 
 function postValues(post: RawPost) {
+  const now = new Date();
   return {
     id: bareId(post.id),
     subreddit: post.subreddit,
     author: post.author ?? null,
     title: post.title,
-    body: post.body ?? null,
-    url: absolutePermalink(post),
+    body: post.body || null,
+    url: absoluteLink(post.permalink, post.url ?? ""),
     score: post.score ?? null,
     numComments: post.numComments ?? null,
     imageUrl: post.image ?? null,
     createdAt: at(post.createdUtc),
-    fetchedAt: new Date(),
+    fetchedAt: now,
+    bodyObservedAt: post.body ? now : null,
   };
 }
 
 /**
  * Writes the shared post rows. A later fetch may carry a body the listing did
- * not have, so an absent body never overwrites one we already hold.
+ * not have, and a listing carrying an empty one is saying the same thing, so
+ * neither ever overwrites a body we already hold. That also keeps the judged
+ * text stable, which is what lets a stored verdict be reused. And
+ * `bodyObservedAt` only moves on a fetch that really carried the text.
  */
 export async function upsertPosts(posts: RawPost[]): Promise<StoredPost[]> {
   if (posts.length === 0) {
@@ -83,6 +89,7 @@ export async function upsertPosts(posts: RawPost[]): Promise<StoredPost[]> {
         numComments: sql`excluded.num_comments`,
         imageUrl: sql`coalesce(excluded.image_url, ${redditPosts.imageUrl})`,
         fetchedAt: sql`excluded.fetched_at`,
+        bodyObservedAt: sql`coalesce(excluded.body_observed_at, ${redditPosts.bodyObservedAt})`,
       },
     })
     .returning();
@@ -110,10 +117,19 @@ export async function postsOfRun(searchRunId: string): Promise<StoredPost[]> {
   return rows.map((row) => row.post);
 }
 
+/**
+ * Writes a thread's comments and stamps the post with when its thread was last
+ * really read. An empty thread is an observation too, which is what lets a
+ * later scan tell "nobody replied" from "we never looked".
+ */
 export async function upsertComments(
   postId: string,
   comments: RawComment[],
 ): Promise<StoredComment[]> {
+  await db()
+    .update(redditPosts)
+    .set({ commentsObservedAt: new Date() })
+    .where(eq(redditPosts.id, postId));
   if (comments.length === 0) {
     return [];
   }
@@ -126,13 +142,18 @@ export async function upsertComments(
         author: comment.author ?? null,
         body: comment.body ?? null,
         score: comment.score ?? null,
+        permalink: absoluteLink(comment.url) || null,
         createdAt: at(comment.createdUtc),
         fetchedAt: new Date(),
       })),
     )
     .onConflictDoUpdate({
       target: redditComments.id,
-      set: { body: sql`excluded.body`, score: sql`excluded.score` },
+      set: {
+        body: sql`excluded.body`,
+        score: sql`excluded.score`,
+        permalink: sql`coalesce(excluded.permalink, ${redditComments.permalink})`,
+      },
     })
     .returning();
 }

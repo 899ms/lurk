@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from "vitest";
-import { withoutKnownLeads, leadKey } from "@/lib/scan/leads";
 import { JUDGEMENT_SYSTEM } from "@/lib/prompts";
 import {
   MAX_POST_READS_FREE,
@@ -220,25 +219,6 @@ describe("post read cap", () => {
   it("caps nothing for a connected wallet or a self-hosted instance", () => {
     expect(postReadCap(TIERS.connected, "connected")).toBeNull();
     expect(postReadCap(null, "free")).toBeNull();
-  });
-});
-
-describe("lead dedupe", () => {
-  it("drops a post the project already judged", () => {
-    const known = new Set([leadKey("abc", null)]);
-    const kept = withoutKnownLeads(known, [{ postId: "abc" }, { postId: "def" }]);
-    expect(kept.map((entry) => entry.postId)).toEqual(["def"]);
-  });
-
-  it("keeps a comment on a post that is already a lead", () => {
-    const known = new Set([leadKey("abc", null)]);
-    const kept = withoutKnownLeads(known, [{ postId: "abc", commentId: "c1" }]);
-    expect(kept).toHaveLength(1);
-  });
-
-  it("drops a duplicate inside one batch", () => {
-    const kept = withoutKnownLeads(new Set(), [{ postId: "abc" }, { postId: "abc" }]);
-    expect(kept).toHaveLength(1);
   });
 });
 

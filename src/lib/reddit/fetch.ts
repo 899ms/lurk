@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { and, desc, eq, gte, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { searchRuns, usageLedger } from "@/db/schema";
-import type { FundedClient } from "@/lib/anyapi";
+import type { FundedClient, Funding } from "@/lib/anyapi";
 import { assertHouseDataUnderCap } from "@/lib/usage";
 /** One search_runs row per kind of thing we fetch, on Reddit or on Google. */
 export type FetchKind =
@@ -62,13 +62,17 @@ async function findRun(
   return rows[0] ?? null;
 }
 
-/** One usage_ledger line. Exported so a non-shared call can record itself too. */
+/**
+ * One usage_ledger line. Exported so a non-shared call can record itself too,
+ * which is how a call with no search_runs row still reaches the house cap.
+ */
 export async function recordUsage(input: {
   projectId: string;
   sku: string;
   costUsd: number;
   requestId: string | null;
   searchRunId: string | null;
+  fundedBy: Funding;
   reused: boolean;
 }) {
   await db().insert(usageLedger).values({
@@ -77,6 +81,7 @@ export async function recordUsage(input: {
     costUsd: input.costUsd.toFixed(6),
     requestId: input.requestId,
     searchRunId: input.searchRunId,
+    fundedBy: input.fundedBy,
     reused: input.reused,
   });
 }
@@ -105,6 +110,7 @@ export async function fetchShared<T>(input: SharedFetch<T>): Promise<SharedResul
       costUsd: 0,
       requestId: existing.requestId,
       searchRunId: existing.id,
+      fundedBy: ctx.funded.funding,
       reused: true,
     });
     return { value, reused: true, costUsd: 0 };
@@ -132,6 +138,7 @@ export async function fetchShared<T>(input: SharedFetch<T>): Promise<SharedResul
     costUsd: result.costUsd,
     requestId,
     searchRunId: runId,
+    fundedBy: ctx.funded.funding,
     reused: false,
   });
   return { value, reused: false, costUsd: result.costUsd };

@@ -1,6 +1,7 @@
-import { eq } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { leads } from "@/db/schema";
+import { leads, redditPosts } from "@/db/schema";
+import type { StoredPost } from "@/lib/reddit/store";
 
 export type LeadRow = {
   projectId: string;
@@ -22,45 +23,87 @@ export function leadKey(postId: string, commentId: string | null): string {
   return commentId ? `comment:${commentId}` : `post:${postId}`;
 }
 
-/** Drops candidates a project already holds a lead for. */
-export function withoutKnownLeads<T extends { postId: string; commentId?: string | null }>(
-  known: Set<string>,
-  candidates: T[],
-): T[] {
-  const seen = new Set(known);
-  const out: T[] = [];
-  for (const candidate of candidates) {
-    const key = leadKey(candidate.postId, candidate.commentId ?? null);
-    if (!seen.has(key)) {
-      seen.add(key);
-      out.push(candidate);
-    }
-  }
-  return out;
-}
+/** What a rescore replaces. The user's own status and miss reason are theirs. */
+const REJUDGED = {
+  score: sql`excluded.score`,
+  fit: sql`excluded.fit`,
+  intent: sql`excluded.intent`,
+  engagement: sql`excluded.engagement`,
+  stage: sql`excluded.stage`,
+  reason: sql`excluded.reason`,
+  matchedPhrase: sql`excluded.matched_phrase`,
+  scoredAt: sql`excluded.scored_at`,
+};
 
-/** Every post and comment this project has already judged. */
-export async function knownLeadKeys(projectId: string): Promise<Set<string>> {
-  const rows = await db()
-    .select({ postId: leads.postId, commentId: leads.commentId })
-    .from(leads)
-    .where(eq(leads.projectId, projectId));
-  return new Set(rows.map((row) => leadKey(row.postId ?? "", row.commentId)));
+/**
+ * Writes the scan's qualified judgements. A lead the project already holds has
+ * its judgement replaced, so a rescore after a profile edit or a comment thread
+ * is visible, while the status and the miss reason the user set are preserved.
+ */
+export async function writeLeads(rows: LeadRow[]): Promise<number> {
+  const groups = [
+    { rows: rows.filter((row) => row.commentId === null), onComment: false },
+    { rows: rows.filter((row) => row.commentId !== null), onComment: true },
+  ];
+  let written = 0;
+  for (const group of groups) {
+    if (group.rows.length === 0) {
+      continue;
+    }
+    const done = await db()
+      .insert(leads)
+      .values(group.rows.map((row) => ({ ...row, scoredAt: new Date() })))
+      .onConflictDoUpdate({
+        target: group.onComment ? [leads.projectId, leads.commentId] : [leads.projectId, leads.postId],
+        targetWhere: group.onComment ? sql`comment_id is not null` : sql`comment_id is null`,
+        set: REJUDGED,
+      })
+      .returning({ id: leads.id });
+    written += done.length;
+  }
+  return written;
 }
 
 /**
- * Writes the scan's keepers. The two partial unique indexes on leads make a
- * repeat harmless even when two scans race, so a duplicate is dropped rather
- * than overwriting a judgement the user may already have acted on.
+ * The threads worth checking again: every post lead still in the feed, best
+ * first. Verification is not limited to the leads this scan happened to find,
+ * because a need found yesterday is the one most likely to have been answered.
  */
-export async function writeLeads(rows: LeadRow[]): Promise<number> {
-  if (rows.length === 0) {
+export async function openPostLeads(
+  projectId: string,
+  budget: number | null,
+): Promise<StoredPost[]> {
+  const query = db()
+    .select({ post: redditPosts })
+    .from(leads)
+    .innerJoin(redditPosts, eq(redditPosts.id, leads.postId))
+    .where(
+      and(eq(leads.projectId, projectId), eq(leads.status, "new"), sql`${leads.commentId} is null`),
+    )
+    .orderBy(desc(leads.score));
+  const rows = budget === null ? await query : await query.limit(budget);
+  return rows.map((row) => row.post);
+}
+
+/**
+ * Takes the post leads whose author says the need is met out of the feed. The
+ * lead is kept, because what it cost and what it taught are still true.
+ */
+export async function resolveLeads(projectId: string, postIds: string[]): Promise<number> {
+  if (postIds.length === 0) {
     return 0;
   }
-  const written = await db()
-    .insert(leads)
-    .values(rows.map((row) => ({ ...row, scoredAt: new Date() })))
-    .onConflictDoNothing()
+  const done = await db()
+    .update(leads)
+    .set({ status: "resolved" })
+    .where(
+      and(
+        eq(leads.projectId, projectId),
+        inArray(leads.postId, postIds),
+        sql`${leads.commentId} is null`,
+        eq(leads.status, "new"),
+      ),
+    )
     .returning({ id: leads.id });
-  return written.length;
+  return done.length;
 }

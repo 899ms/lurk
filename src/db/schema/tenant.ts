@@ -4,6 +4,7 @@ import {
   boolean,
   index,
   integer,
+  jsonb,
   numeric,
   pgTable,
   text,
@@ -55,6 +56,12 @@ export const projects = pgTable("projects", {
   budgetFit: text("budget_fit"),
   voiceProfile: text("voice_profile"),
   scoreThreshold: integer("score_threshold"),
+  /**
+   * Bumped on every edit to the facts a judgement is made against. A stored
+   * evaluation is only reusable for the version it was made under, so editing
+   * the product makes the next scan judge everything again.
+   */
+  profileVersion: integer("profile_version").notNull().default(1),
   tierSnapshot: text("tier_snapshot"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -127,6 +134,51 @@ export const leads = pgTable(
   ],
 );
 
+/**
+ * Every candidate this project has judged, whatever the verdict. The leads
+ * table holds only what qualified, so without this a rejection was forgotten
+ * and bought again on the next scan, and a review was invisible.
+ */
+export const leadEvaluations = pgTable(
+  "lead_evaluations",
+  {
+    id: id(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    postId: text("post_id")
+      .notNull()
+      .references(() => redditPosts.id, { onDelete: "cascade" }),
+    commentId: text("comment_id").references(() => redditComments.id, { onDelete: "cascade" }),
+    decision: text("decision").notNull(),
+    relationship: text("relationship").notNull(),
+    needState: text("need_state").notNull(),
+    fit: integer("fit"),
+    intent: integer("intent"),
+    engagement: integer("engagement").notNull(),
+    score: integer("score").notNull(),
+    reasonCodes: text("reason_codes").array().notNull(),
+    requirements: jsonb("requirements").notNull(),
+    answerCoverage: text("answer_coverage").notNull(),
+    evidenceQuote: text("evidence_quote"),
+    reason: text("reason").notNull(),
+    /** The project profile version and the text hash this verdict was made on. */
+    profileVersion: integer("profile_version").notNull(),
+    contentHash: text("content_hash").notNull(),
+    scorerVersion: text("scorer_version").notNull(),
+    judgedAt: timestamp("judged_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("lead_evaluations_project_post_idx")
+      .on(t.projectId, t.postId)
+      .where(sql`${t.commentId} is null`),
+    uniqueIndex("lead_evaluations_project_comment_idx")
+      .on(t.projectId, t.commentId)
+      .where(sql`${t.commentId} is not null`),
+    index("lead_evaluations_project_decision_idx").on(t.projectId, t.decision),
+  ],
+);
+
 export const drafts = pgTable("drafts", {
   id: id(),
   leadId: text("lead_id")
@@ -196,6 +248,8 @@ export const usageLedger = pgTable(
     costUsd: numeric("cost_usd", { precision: 12, scale: 6 }).notNull().default("0"),
     requestId: text("request_id"),
     searchRunId: text("search_run_id").references(() => searchRuns.id, { onDelete: "set null" }),
+    /** Who paid, so a call with no shared run still counts against the cap. */
+    fundedBy: text("funded_by").notNull().default("house"),
     reused: boolean("reused").notNull().default(false),
     at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
   },

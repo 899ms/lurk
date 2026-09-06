@@ -2,13 +2,14 @@ import { EmptyState } from "@/components/EmptyState";
 import { FeedFilters } from "@/components/leads/FeedFilters";
 import { LeadCard, type CardLead } from "@/components/leads/LeadCard";
 import { LeadTimeline } from "@/components/leads/LeadTimeline";
+import { ReviewBucket } from "@/components/leads/ReviewBucket";
 import { ScanStatus } from "@/components/leads/ScanStatus";
 import { Button } from "@/components/ui/button";
 import { scanNowAction } from "@/app/app/scan";
 import { lastRunJob } from "@/jobs/enqueue";
 import { requireLocalUser } from "@/lib/auth";
 import { FEED_WINDOWS, type FeedWindow, type LeadStatus } from "@/lib/feed";
-import { feedFacets, listLeads } from "@/lib/leads";
+import { feedFacets, listLeads, listReviewItems } from "@/lib/leads";
 import { activeProject } from "@/lib/projects";
 
 type LeadsPageProps = {
@@ -21,12 +22,13 @@ type LeadsPageProps = {
   }>;
 };
 
-const STATUSES: LeadStatus[] = ["new", "hidden", "not_fit"];
+const STATUSES: LeadStatus[] = ["new", "hidden", "not_fit", "resolved"];
 
 const EMPTY_SENTENCE: Record<LeadStatus, string> = {
   new: "Nothing new in this window. The next scan runs on your schedule, or press Scan now.",
   hidden: "You have not hidden any leads yet.",
   not_fit: "You have not marked any leads as a miss yet.",
+  resolved: "No lead has said in its thread that the need is already met.",
 };
 
 function toCard(lead: Awaited<ReturnType<typeof listLeads>>[number]): CardLead {
@@ -41,7 +43,7 @@ function toCard(lead: Awaited<ReturnType<typeof listLeads>>[number]): CardLead {
     reason: lead.reason,
     matchedPhrase: lead.matchedPhrase,
     title: lead.title,
-    url: lead.url,
+    url: (isComment ? lead.commentPermalink : lead.url) ?? lead.url,
     subreddit: lead.subreddit,
     subredditIconUrl: lead.subredditIconUrl,
     promoPolicy: lead.promoPolicy,
@@ -56,6 +58,7 @@ function toCard(lead: Awaited<ReturnType<typeof listLeads>>[number]): CardLead {
     isComment,
     postAuthor: lead.postAuthor,
     postAuthorAvatar: lead.postAuthorAvatar,
+    observedAt: lead.commentsObservedAt ?? lead.bodyObservedAt,
   };
 }
 
@@ -74,10 +77,11 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
 
   const status = STATUSES.find((one) => one === params.status) ?? "new";
   const days = (FEED_WINDOWS.find((one) => String(one) === params.days) ?? 30) as FeedWindow;
-  const [rows, facets, job] = await Promise.all([
+  const [rows, facets, job, review] = await Promise.all([
     listLeads(project.id, { status, days, subreddit: params.subreddit, stage: params.stage }),
     feedFacets(project.id),
     lastRunJob("scan", project.id),
+    listReviewItems(project.id, days),
   ]);
   const cards = rows.map(toCard);
 
@@ -107,6 +111,7 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
           createdAt: card.createdAt,
         }))}
       />
+      {status === "new" ? <ReviewBucket items={review} /> : null}
       {cards.length === 0 ? (
         <EmptyState title="Nothing here" sentence={EMPTY_SENTENCE[status]} />
       ) : (

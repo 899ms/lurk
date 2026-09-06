@@ -14,6 +14,7 @@ import { PROFILE_SYSTEM, PROMO_POLICY_SYSTEM } from "./prompts";
 import { normalizeQuery, recordUsage } from "./reddit/fetch";
 import { fetchSubredditDetails } from "./reddit/skus";
 import { capped, tierForUser } from "./tier";
+import { assertHouseDataUnderCap } from "./usage";
 
 /** How long a subreddit sidebar is reused before we buy it again. */
 const SUBREDDIT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -34,8 +35,15 @@ export type ProductProfile = z.infer<typeof profileSchema>;
 
 export type ProfileStep = "scrape" | "profile" | "subreddits" | "done";
 
+/**
+ * Reads the product page. It buys no shared run, so it counts against the house
+ * cap through the same seam every Reddit fetch uses, and is refused by it.
+ */
 async function scrapeProduct(projectId: string, userId: string, url: string) {
   const funded = await clientForUser(userId);
+  if (funded.funding === "house") {
+    await assertHouseDataUnderCap();
+  }
   const { result: res, requestId } = await funded.call(() => funded.client.web.scrape({ url }));
   await recordUsage({
     projectId,
@@ -43,6 +51,7 @@ async function scrapeProduct(projectId: string, userId: string, url: string) {
     costUsd: res.costUsd,
     requestId,
     searchRunId: null,
+    fundedBy: funded.funding,
     reused: false,
   });
   if (!res.output.found) {

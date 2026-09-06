@@ -1,7 +1,9 @@
-import { aliasedTable, and, asc, count, desc, eq, gte, inArray, sql } from "drizzle-orm";
+import { aliasedTable, and, asc, count, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
+  leadEvaluations,
   leads,
+  projects,
   redditAuthors,
   redditComments,
   redditPosts,
@@ -9,8 +11,9 @@ import {
   subreddits,
   usageLedger,
 } from "@/db/schema";
+import { DEFAULT_SCORE_THRESHOLD } from "./scan/constants";
 
-import type { FeedFacets, FeedFilter, LeadCost } from "./feed";
+import type { FeedFacets, FeedFilter, LeadCost, ReviewItem } from "./feed";
 
 export type FeedLead = Awaited<ReturnType<typeof listLeads>>[number];
 
@@ -41,6 +44,9 @@ const feedColumns = {
   promoPolicy: subreddits.promoPolicy,
   rulesText: subreddits.rulesText,
   commentId: leads.commentId,
+  commentPermalink: redditComments.permalink,
+  bodyObservedAt: redditPosts.bodyObservedAt,
+  commentsObservedAt: redditPosts.commentsObservedAt,
   commentBody: redditComments.body,
   commentAuthor: redditComments.author,
   commentScore: redditComments.score,
@@ -66,19 +72,72 @@ function since(days: number): Date {
   return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 }
 
+/** A comment lead is as old as the comment, never as old as the thread. */
+const NEED_AT = sql`coalesce(${redditComments.createdAt}, ${redditPosts.createdAt})`;
+
+/** Postgres wants the bound date as text when the column is a plain expression. */
+function newerThan(days: number) {
+  return sql`${NEED_AT} >= ${since(days).toISOString()}::timestamptz`;
+}
+
+/**
+ * The project's own minimum score, applied when the feed is read. Moving it on
+ * the Product page changes the next page load, with no rescan and nothing
+ * deleted, because the judgement and the user's floor are different facts.
+ */
+const OVER_THRESHOLD = sql`${leads.score} >= coalesce(${projects.scoreThreshold}, ${DEFAULT_SCORE_THRESHOLD})`;
+
 /** The feed, best first, for one set of filter pills. */
 export async function listLeads(projectId: string, filter: FeedFilter) {
   return feedQuery()
+    .innerJoin(projects, eq(projects.id, leads.projectId))
     .where(
       and(
         eq(leads.projectId, projectId),
         eq(leads.status, filter.status),
-        gte(redditPosts.createdAt, since(filter.days)),
+        OVER_THRESHOLD,
+        newerThan(filter.days),
         filter.subreddit ? eq(sql`lower(${redditPosts.subreddit})`, filter.subreddit) : undefined,
         filter.stage ? eq(leads.stage, filter.stage) : undefined,
       ),
     )
-    .orderBy(desc(leads.score), desc(redditPosts.createdAt));
+    .orderBy(desc(leads.score), desc(NEED_AT));
+}
+
+/**
+ * The candidates the scan held back because the evidence did not settle them.
+ * They are not leads and never enter the feed count, but they are the seven or
+ * so items per scan that a person can settle in a glance.
+ */
+export async function listReviewItems(projectId: string, days: number): Promise<ReviewItem[]> {
+  const rows = await db()
+    .select({
+      id: leadEvaluations.id,
+      title: redditPosts.title,
+      subreddit: redditPosts.subreddit,
+      url: sql<string>`coalesce(${redditComments.permalink}, ${redditPosts.url})`,
+      author: sql<string | null>`coalesce(${redditComments.author}, ${redditPosts.author})`,
+      isComment: sql<boolean>`${leadEvaluations.commentId} is not null`,
+      reason: leadEvaluations.reason,
+      reasonCodes: leadEvaluations.reasonCodes,
+      fit: leadEvaluations.fit,
+      intent: leadEvaluations.intent,
+      needState: leadEvaluations.needState,
+      createdAt: sql<Date>`coalesce(${redditComments.createdAt}, ${redditPosts.createdAt})`,
+      judgedAt: leadEvaluations.judgedAt,
+    })
+    .from(leadEvaluations)
+    .innerJoin(redditPosts, eq(redditPosts.id, leadEvaluations.postId))
+    .leftJoin(redditComments, eq(redditComments.id, leadEvaluations.commentId))
+    .where(
+      and(
+        eq(leadEvaluations.projectId, projectId),
+        eq(leadEvaluations.decision, "review"),
+        newerThan(days),
+      ),
+    )
+    .orderBy(desc(leadEvaluations.judgedAt));
+  return rows;
 }
 
 /** The subreddits and stages this project actually has leads in. */

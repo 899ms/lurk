@@ -61,15 +61,26 @@ export class HouseDataCapReachedError extends Error {
 
 /**
  * What the house key has spent on AnyAPI since midnight UTC, across every
- * project. Read from search_runs because that is the only table that records
- * who paid; a reused run costs nothing and is stored as no new run at all.
+ * project: the shared runs, plus the calls that produce no shared run at all,
+ * which is the product page read and the keyword volume lookup. A reused run
+ * costs nothing and is stored as no new run, so nothing is counted twice.
  */
 export async function houseDataSpendToday(): Promise<number> {
-  const rows = await db()
+  const runs = await db()
     .select({ total: sql<string>`coalesce(sum(${searchRuns.costUsd}), 0)` })
     .from(searchRuns)
     .where(and(eq(searchRuns.fundedBy, "house"), gte(searchRuns.fetchedAt, startOfToday())));
-  return Number(rows[0]?.total ?? 0);
+  const unshared = await db()
+    .select({ total: sql<string>`coalesce(sum(${usageLedger.costUsd}), 0)` })
+    .from(usageLedger)
+    .where(
+      and(
+        eq(usageLedger.fundedBy, "house"),
+        sql`${usageLedger.searchRunId} is null`,
+        gte(usageLedger.at, startOfToday()),
+      ),
+    );
+  return Number(runs[0]?.total ?? 0) + Number(unshared[0]?.total ?? 0);
 }
 
 /** Throws before a house-funded call that today's budget can no longer cover. */

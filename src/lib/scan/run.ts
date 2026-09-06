@@ -7,15 +7,25 @@ import type { FetchContext } from "@/lib/reddit/fetch";
 import {
   fetchAuthorProfile,
   fetchPost,
-  fetchPostComments,
   fetchSearch,
   fetchSubredditPosts,
 } from "@/lib/reddit/skus";
 import type { StoredPost } from "@/lib/reddit/store";
 import { scanIntervalHours, tierForUser } from "@/lib/tier";
 import { RETENTION_DAYS } from "@/lib/tiers";
-import { MIN_COMMENTS_FOR_THREAD, postReadCap } from "./constants";
-import { knownLeadKeys, leadKey, withoutKnownLeads, writeLeads, type LeadRow } from "./leads";
+import { judgeThreads, readThreads } from "./comments";
+import { postReadCap } from "./constants";
+import {
+  alreadyJudged,
+  commentDigests,
+  digestComments,
+  loadEvaluations,
+  postHash,
+  writeEvaluations,
+  type EvaluationRecord,
+  type StoredJudgement,
+} from "./evaluations";
+import { leadKey, openPostLeads, resolveLeads, writeLeads, type LeadRow } from "./leads";
 import { loadScanProject, type ScanProject } from "./project";
 import type { Judgement, ScorableItem } from "./judgement";
 import { judgeItems, readOrder, triageTitles } from "./score";
@@ -25,6 +35,9 @@ const RETENTION_MS = RETENTION_DAYS * 24 * HOUR_MS;
 
 /** A Reddit avatar changes rarely, so one lookup covers a whole month. */
 const AUTHOR_MAX_AGE_MS = 30 * 24 * HOUR_MS;
+
+/** The digest of a post whose thread we have never read. */
+const UNREAD_THREAD = digestComments([]);
 
 export type ScanOutcome = { candidates: number; read: number; leads: number };
 
@@ -57,7 +70,12 @@ async function gatherCandidates(
   return [...seen.values()];
 }
 
-function toLead(project: ScanProject, judgement: Judgement, postId: string, commentId: string | null): LeadRow {
+function toLead(
+  project: ScanProject,
+  judgement: Judgement,
+  postId: string,
+  commentId: string | null,
+): LeadRow {
   return {
     projectId: project.id,
     postId,
@@ -74,54 +92,24 @@ function toLead(project: ScanProject, judgement: Judgement, postId: string, comm
 
 /**
  * Only a qualified judgement reaches the feed. The gates in gates.ts settled
- * that; the project threshold is the user's own extra floor on top of it.
+ * that; the project's own minimum score is applied when the feed is read, so
+ * moving it never has to mean scanning again.
  */
-function keepers(project: ScanProject, judgements: Judgement[]): Judgement[] {
-  return judgements.filter((item) => item.decision === "qualify" && item.score >= project.threshold);
+function qualified<T extends { judgement: Judgement }>(items: T[]): T[] {
+  return items.filter((item) => item.judgement.decision === "qualify");
 }
 
-async function scanComments(
-  project: ScanProject,
-  ctx: FetchContext,
-  posts: StoredPost[],
-  threadBudget: number | null,
-  known: Set<string>,
-): Promise<{ rows: LeadRow[]; authors: string[] }> {
-  const threads = posts
-    .filter((post) => (post.numComments ?? 0) >= MIN_COMMENTS_FOR_THREAD)
-    .slice(0, threadBudget ?? posts.length);
-  const items: ScorableItem[] = [];
-  const parentOf = new Map<string, string>();
-  const authorOf = new Map<string, string | null>();
-  for (const post of threads) {
-    const result = await fetchPostComments(ctx, post.id, post.url);
-    for (const comment of result.value) {
-      if (known.has(leadKey(post.id, comment.id))) {
-        continue;
-      }
-      parentOf.set(comment.id, post.id);
-      authorOf.set(comment.id, comment.author);
-      items.push({
-        id: comment.id,
-        title: post.title,
-        subreddit: post.subreddit,
-        body: comment.body ?? "",
-        author: comment.author,
-        ageHours: (Date.now() - comment.createdAt.getTime()) / HOUR_MS,
-        upvotes: comment.score,
-        numComments: post.numComments,
-        parentBody: post.body ?? "",
-      });
-    }
-  }
-  if (items.length === 0) {
-    return { rows: [], authors: [] };
-  }
-  const judgements = await judgeItems(project.id, project.productText, items);
-  const kept = keepers(project, judgements).filter((item) => parentOf.has(item.id));
+function postItem(post: StoredPost): ScorableItem {
   return {
-    rows: kept.map((item) => toLead(project, item, parentOf.get(item.id) as string, item.id)),
-    authors: kept.map((item) => authorOf.get(item.id) ?? "").filter(Boolean),
+    id: post.id,
+    title: post.title,
+    subreddit: post.subreddit,
+    body: post.body ?? "",
+    author: post.author,
+    ageHours: (Date.now() - post.createdAt.getTime()) / HOUR_MS,
+    upvotes: post.score,
+    numComments: post.numComments,
+    parentBody: null,
   };
 }
 
@@ -130,7 +118,7 @@ async function scanComments(
  * failed scan: the card falls back to the author's initials.
  */
 async function fetchAvatars(ctx: FetchContext, usernames: string[]): Promise<void> {
-  for (const username of new Set(usernames)) {
+  for (const username of new Set(usernames.filter(Boolean))) {
     try {
       await fetchAuthorProfile(ctx, username, AUTHOR_MAX_AGE_MS);
     } catch {
@@ -139,9 +127,50 @@ async function fetchAvatars(ctx: FetchContext, usernames: string[]): Promise<voi
   }
 }
 
+/** The posts this project has no current verdict on, given what it has read. */
+async function unjudged(
+  project: ScanProject,
+  stored: Map<string, StoredJudgement>,
+  posts: StoredPost[],
+): Promise<StoredPost[]> {
+  const digests = await commentDigests(posts.map((post) => post.id));
+  return posts.filter(
+    (post) =>
+      !alreadyJudged(
+        stored,
+        leadKey(post.id, null),
+        project.profileVersion,
+        postHash(post.title, post.body, digests.get(post.id) ?? UNREAD_THREAD),
+      ),
+  );
+}
+
+async function evaluationsFor(
+  project: ScanProject,
+  posts: StoredPost[],
+  judgements: Judgement[],
+): Promise<EvaluationRecord[]> {
+  const digests = await commentDigests(posts.map((post) => post.id));
+  const byId = new Map(posts.map((post) => [post.id, post]));
+  return judgements.map((judgement) => {
+    const post = byId.get(judgement.id) as StoredPost;
+    return {
+      projectId: project.id,
+      postId: post.id,
+      commentId: null,
+      judgement,
+      profileVersion: project.profileVersion,
+      contentHash: postHash(post.title, post.body, digests.get(post.id) ?? UNREAD_THREAD),
+    };
+  });
+}
+
 /**
- * One scan: list, triage the titles, read the shortlist in full, judge, then
- * buy comments only for the threads worth replying in.
+ * One scan: list, triage the titles, read the shortlist in full, judge it, and
+ * write what qualified. Only then are comment threads bought, for two separate
+ * purposes: checking whether each qualified need is still open, and finding the
+ * other people in the thread who have a need of their own. Leads are already
+ * committed by that point, so a thread we cannot read costs a scan nothing.
  */
 export async function runScan(projectId: string, jobId: string): Promise<ScanOutcome> {
   const project = await loadScanProject(projectId);
@@ -159,14 +188,11 @@ export async function runScan(projectId: string, jobId: string): Promise<ScanOut
   const timeframe = (await isFirstScan(projectId)) ? "week" : "day";
 
   await writeProgress(jobId, "Looking for new posts");
-  const known = await knownLeadKeys(projectId);
+  const stored = await loadEvaluations(projectId);
   const fresh = (await gatherCandidates(project, ctx, timeframe)).filter(
     (post) => Date.now() - post.createdAt.getTime() <= windowMs,
   );
-  const candidates = withoutKnownLeads(
-    known,
-    fresh.map((post) => ({ postId: post.id, post })),
-  ).map((entry) => entry.post);
+  const candidates = await unjudged(project, stored, fresh);
 
   await writeProgress(jobId, `Reading ${candidates.length} titles`);
   const triage = await triageTitles(
@@ -196,45 +222,47 @@ export async function runScan(projectId: string, jobId: string): Promise<ScanOut
   }
 
   await writeProgress(jobId, `Scoring ${full.length} posts`);
-  const judgements = await judgeItems(
-    projectId,
-    project.productText,
-    full.map((post) => ({
-      id: post.id,
-      title: post.title,
-      subreddit: post.subreddit,
-      body: post.body ?? "",
-      author: post.author,
-      ageHours: (Date.now() - post.createdAt.getTime()) / HOUR_MS,
-      upvotes: post.score,
-      numComments: post.numComments,
-      parentBody: null,
-    })),
+  const toJudge = await unjudged(project, stored, full);
+  const judgements = await judgeItems(projectId, project.productText, toJudge.map(postItem));
+  await writeEvaluations(await evaluationsFor(project, toJudge, judgements));
+  const scored = judgements.map((judgement) => ({ judgement }));
+  const fullById = new Map(toJudge.map((post) => [post.id, post]));
+  const postLeads = qualified(scored).map((item) =>
+    toLead(project, item.judgement, item.judgement.id, null),
   );
-  const postLeads = keepers(project, judgements).map((item) => toLead(project, item, item.id, null));
+  await writeLeads(postLeads);
 
   await writeProgress(jobId, "Reading comment threads");
-  const byScore = [...postLeads].sort((a, b) => b.score - a.score);
-  const threadPosts = byScore
-    .map((lead) => full.find((post) => post.id === lead.postId))
-    .filter((post): post is StoredPost => post !== undefined);
-  const commentLeads = await scanComments(
-    project,
-    ctx,
-    threadPosts,
-    limits?.commentThreadsPerScan ?? null,
-    known,
+  const threadPosts = await openPostLeads(projectId, limits?.commentThreadsPerScan ?? null);
+  const { threads } = await readThreads(ctx, threadPosts);
+  const judged = await judgeThreads(project, threads, stored);
+  await writeEvaluations(judged.records);
+  await resolveLeads(
+    projectId,
+    judged.verification
+      .filter((item) => item.judgement.needState === "resolved")
+      .map((item) => item.post.id),
+  );
+  const commentLeads = qualified(judged.discovery).map((item) =>
+    toLead(project, item.judgement, item.postId, item.comment.id),
+  );
+  const rejudged = qualified(judged.verification).map((item) =>
+    toLead(project, item.judgement, item.post.id, null),
+  );
+  await writeLeads([...rejudged, ...commentLeads]);
+  const committed = new Set(
+    [...postLeads, ...rejudged, ...commentLeads].map((lead) =>
+      leadKey(lead.postId, lead.commentId),
+    ),
   );
 
-  const written = await writeLeads([...postLeads, ...commentLeads.rows]);
-
   await writeProgress(jobId, "Looking up who posted");
-  const postAuthors = postLeads
-    .map((lead) => full.find((post) => post.id === lead.postId)?.author ?? "")
-    .filter(Boolean);
-  await fetchAvatars(ctx, [...postAuthors, ...commentLeads.authors]);
+  await fetchAvatars(ctx, [
+    ...postLeads.map((lead) => fullById.get(lead.postId)?.author ?? ""),
+    ...qualified(judged.discovery).map((item) => item.comment.author ?? ""),
+  ]);
 
   await writeProgress(jobId, "Finished");
   await enqueueJob("scan", projectId, new Date(Date.now() + scanIntervalHours(limits) * HOUR_MS));
-  return { candidates: candidates.length, read: full.length, leads: written };
+  return { candidates: candidates.length, read: full.length, leads: committed.size };
 }

@@ -37,6 +37,8 @@ export type CardLead = {
   isComment: boolean;
   postAuthor: string | null;
   postAuthorAvatar: string | null;
+  /** When the thread behind this lead was last really read. */
+  observedAt: Date | null;
 };
 
 type LeadCardProps = { lead: CardLead; projectId: string };
@@ -99,6 +101,11 @@ export function LeadCard({ lead, projectId }: LeadCardProps) {
             </span>
             <SubredditChip name={lead.subreddit} iconUrl={lead.subredditIconUrl} />
             <span className="text-mono text-fg-muted">{relativeAge(lead.createdAt)}</span>
+            {lead.observedAt ? (
+              <span className="text-mono text-fg-muted">
+                checked {relativeAge(lead.observedAt)}
+              </span>
+            ) : null}
             <ScoreBadge score={lead.score} className="ml-auto" />
           </div>
 

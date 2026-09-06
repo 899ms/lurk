@@ -36,6 +36,13 @@
       "when": 1788659066378,
       "tag": "0004_sudden_kitty_pryde",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788684069634,
+      "tag": "0005_swift_mauler",
+      "breakpoints": true
     }
   ]
 }

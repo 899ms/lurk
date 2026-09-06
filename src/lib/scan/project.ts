@@ -8,6 +8,8 @@ export type ScanProject = {
   userId: string;
   name: string;
   threshold: number;
+  /** The version of the product facts below; a verdict is only reusable for it. */
+  profileVersion: number;
   keywords: string[];
   subreddits: string[];
   competitors: string[];
@@ -47,6 +49,7 @@ export async function loadScanProject(projectId: string): Promise<ScanProject | 
     userId: row.userId,
     name: row.name,
     threshold: row.scoreThreshold ?? DEFAULT_SCORE_THRESHOLD,
+    profileVersion: row.profileVersion,
     keywords: keywords.map((item) => item.keyword),
     subreddits: subs.map((item) => item.name),
     competitors: competitorNames,

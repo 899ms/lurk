@@ -12,6 +12,7 @@ const STATUS_LABELS: Record<string, string> = {
   new: "New",
   hidden: "Hidden",
   not_fit: "Not a fit",
+  resolved: "Resolved",
 };
 
 function label(stage: string): string {

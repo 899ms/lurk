@@ -28,6 +28,13 @@ export const redditPosts = pgTable(
     imageUrl: text("image_url"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
     fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
+    /**
+     * When the body and the comment thread were last really seen. `fetchedAt`
+     * only says a listing mentioned this post, which a listing does without
+     * carrying a body, so it cannot answer "when was this last verified".
+     */
+    bodyObservedAt: timestamp("body_observed_at", { withTimezone: true }),
+    commentsObservedAt: timestamp("comments_observed_at", { withTimezone: true }),
     raw: jsonb("raw"),
   },
   (t) => [index("reddit_posts_subreddit_created_at_idx").on(t.subreddit, t.createdAt)],
@@ -42,6 +49,8 @@ export const redditComments = pgTable("reddit_comments", {
   author: text("author"),
   body: text("body"),
   score: integer("score"),
+  /** The comment's own Reddit link, so a lead card opens on the comment. */
+  permalink: text("permalink"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
   fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
   raw: jsonb("raw"),
