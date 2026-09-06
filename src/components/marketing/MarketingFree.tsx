@@ -74,6 +74,15 @@ export function MarketingFree() {
                 transition={{ duration: reduced ? 0 : 0.6, ease: "easeOut" }}
                 style={{ width: `${Math.max((plan.usd / MAX_USD) * 100, 2)}%` }}
               />
+              {"callout" in plan ? (
+                <span className="plan-callout">
+                  <svg viewBox="0 0 48 32" aria-hidden="true">
+                    <path d="M46 4 C 30 2, 14 10, 4 26" />
+                    <path d="M3 17 L 4 26 L 13 24" />
+                  </svg>
+                  {plan.callout}
+                </span>
+              ) : null}
             </span>
             <span role="cell" className="plan-value">
               {plan.usd === 0 ? "Free" : `$${plan.usd}/mo`}
