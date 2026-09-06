@@ -1,19 +1,20 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { createProjectAction } from "@/app/app/actions";
 
 export type SwitcherProject = { id: string; name: string };
 
-type ProjectSwitcherProps = { projects: SwitcherProject[]; defaultId: string | null };
+type ProjectSwitcherProps = {
+  projects: SwitcherProject[];
+  defaultId: string | null;
+};
 
-/** Picks the active project and creates a new one with a name and a URL. */
+/** Picks the active project, and links to the page that creates a new one. */
 export function ProjectSwitcher({ projects, defaultId }: ProjectSwitcherProps) {
   const router = useRouter();
   const params = useSearchParams();
-  const [creating, setCreating] = useState(projects.length === 0);
   const activeId = params.get("project") ?? defaultId;
 
   function select(id: string) {
@@ -38,29 +39,12 @@ export function ProjectSwitcher({ projects, defaultId }: ProjectSwitcherProps) {
           ))}
         </select>
       ) : null}
-      {creating ? (
-        <form action={createProjectAction} className="flex flex-col gap-2">
-          <input
-            name="name"
-            required
-            placeholder="Project name"
-            className="h-10 rounded-control border bg-surface px-2 text-body"
-          />
-          <input
-            name="url"
-            type="url"
-            placeholder="https://yourproduct.com"
-            className="h-10 rounded-control border bg-surface px-2 text-body"
-          />
-          <Button type="submit" size="lg">
-            Create project
-          </Button>
-        </form>
-      ) : (
-        <Button variant="outline" size="lg" onClick={() => setCreating(true)}>
-          New project
-        </Button>
-      )}
+      <Button
+        variant="outline"
+        size="lg"
+        nativeButton={false}
+        render={<Link href="/app/projects/new">New project</Link>}
+      />
     </div>
   );
 }
