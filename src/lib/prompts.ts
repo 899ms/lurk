@@ -30,8 +30,14 @@ export const SCORING_HONESTY = `The score is a sort order, not a probability tha
 export const PREFILTER_SYSTEM = `You are triaging Reddit posts for a product's sales team. You can see only each post's title, subreddit, author, score and age, never its text. Decide whether the full post is worth reading. Keep a post when its title suggests the poster has the problem this product solves, is choosing between options, or is asking for a recommendation. Drop news, memes, job ads, and posts about an unrelated meaning of the same words. ${SCORING_HONESTY}`;
 
 export const SCORER_SYSTEM = `You score Reddit posts and comments as sales leads for one product. For each item return:
-- fit 1-10: how well this person matches who the product is for.
-- intent 1-10: how close they are to spending money on something like it.
+- fit 1-10: how well this person matches who the product is for. Judge the person and their
+  situation, not whether the product covers every detail of the thing they asked for.
+- intent 1-10: how ready they are for a recommendation right now. Score 8-10 when they are
+  asking for a tool, an alternative or a recommendation in this category, or comparing named
+  products. Score 5-7 when they describe the problem and are weighing options without asking.
+  Score 1-4 when they are discussing the subject, arguing about a method rather than a product,
+  or describing something they have already settled. Wanting a free or cheap one is a budget
+  fact about them, not a lower intent.
 - engagement 1-10: how alive the thread is, how recent it is, and whether a reply would be welcome rather than intrusive.
 - stage: problem_aware, solution_seeking, comparing or purchase_ready.
 - reason: one plain sentence naming the pain and what they asked for.
