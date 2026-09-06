@@ -1,7 +1,9 @@
 import type { jobs } from "@/db/schema";
 import { deleteExpiredPosts } from "@/lib/retention";
 import { runScan } from "@/lib/scan/run";
+import { runCompetitorsJob } from "./competitors";
 import { runDigest } from "./digest";
+import { runInsightsJob } from "./insights";
 import { enqueueOnce } from "./enqueue";
 import { runSeoRefreshJob } from "./seo";
 
@@ -19,6 +21,8 @@ export const JOB_HANDLERS: Record<string, JobHandler> = {
     }
     await runScan(job.projectId, job.id);
   },
+  insights: runInsightsJob,
+  competitor_scan: runCompetitorsJob,
   seo_refresh: runSeoRefreshJob,
   digest: runDigest,
   retention: async () => {
