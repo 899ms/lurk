@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { SCORE_BATCH_SIZE } from "@/lib/scan/constants";
 import { leadKey } from "@/lib/scan/leads";
 import {
   alreadyJudged,
@@ -15,7 +16,9 @@ import {
 
 vi.mock("@/lib/llm", () => ({ generateStructured: vi.fn() }));
 
-const { representativeComments, verificationText } = await import("@/lib/scan/comments");
+const { judgeThreads, representativeComments, verificationText } = await import(
+  "@/lib/scan/comments"
+);
 
 describe("reusing a stored verdict", () => {
   const stored = new Map([[leadKey("abc", null), { profileVersion: 3, contentHash: "hash" }]]);
@@ -117,5 +120,106 @@ describe("what a thread is read for", () => {
       ],
     });
     expect(kept.map((one) => one.id)).toEqual(["c2"]);
+  });
+});
+
+describe("judging one comment once", () => {
+  const project = {
+    id: "project-1",
+    userId: "user-1",
+    name: "Formcraft",
+    threshold: 50,
+    profileVersion: 1,
+    keywords: [],
+    subreddits: [],
+    competitors: [],
+    productText: "Product: Formcraft",
+  };
+
+  function post(id: string) {
+    return {
+      id,
+      author: "asker",
+      title: "Need a form tool",
+      body: "Our signup form needs conditional logic.",
+      subreddit: "SaaS",
+      numComments: 3,
+      score: 4,
+      createdAt: new Date(),
+    } as never as import("@/lib/reddit/store").StoredPost;
+  }
+
+  function reply(postId: string, id = "shared-comment") {
+    return {
+      id,
+      postId,
+      author: `buyer-${id}`,
+      body: "I need conditional logic on my own signup form too.",
+      score: 1,
+      permalink: null,
+      parentId: null,
+      raw: null,
+      createdAt: new Date(),
+      fetchedAt: new Date(),
+    } as never as import("@/lib/reddit/store").StoredComment;
+  }
+
+  /**
+   * An upstream that answers a crosspost with the original thread's replies
+   * hands the same comment back under a second post, and a comment keeps the
+   * post it was first stored under, so both threads carry it.
+   */
+  it("gives a comment two threads carry one verdict and one model call", async () => {
+    const { generateStructured } = await import("@/lib/llm");
+    const model = vi.mocked(generateStructured);
+    model.mockReset();
+    model.mockImplementation(async (input) =>
+      ({
+        items: [...(input.prompt as string).matchAll(/^id: (\S+)$/gm)].map((match) => ({
+          id: match[1],
+          relationship: "buyer",
+          needState: "open",
+          fit: 4,
+          intent: 3,
+          stage: "solution_seeking",
+          requirements: [],
+          answerCoverage: "none",
+          unansweredAngle: null,
+          decision: "qualify",
+          reasonCodes: ["supported_open_need"],
+          needEvidence: { quote: "conditional logic" },
+          reason: "Wants a form that branches.",
+        })),
+      }) as never,
+    );
+
+    const judged = await judgeThreads(
+      project,
+      [
+        {
+          post: post("p1"),
+          comments: [
+            reply("p1"),
+            ...Array.from({ length: SCORE_BATCH_SIZE }, (_, index) =>
+              reply("p1", `other-${index}`),
+            ),
+          ],
+        },
+        { post: post("p2"), comments: [reply("p1")] },
+      ],
+      new Map(),
+    );
+
+    const commentIds = judged.records
+      .filter((record) => record.commentId !== null)
+      .map((record) => record.commentId);
+    expect(commentIds.filter((id) => id === "shared-comment")).toEqual(["shared-comment"]);
+    expect(new Set(commentIds).size).toBe(commentIds.length);
+    const scored = model.mock.calls
+      .map((call) => call[0])
+      .filter((input) => input.purpose === "score");
+    expect(scored.filter((input) => input.prompt.includes("id: shared-comment"))).toHaveLength(
+      1,
+    );
   });
 });

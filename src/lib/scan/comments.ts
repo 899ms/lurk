@@ -139,6 +139,13 @@ function record(
  * Judges what the threads said, in two passes with separate model calls: the
  * posts again with their replies known, and every other participant's own need.
  * A candidate whose text and product profile have not changed is skipped.
+ *
+ * A comment is judged once per scan however many threads carry it. Two threads
+ * can carry one comment: a comment keeps the post it was first stored under, so
+ * an upstream that answers a crosspost with the original thread's replies hands
+ * the same comment back under a second post. Judging it twice would spend a
+ * second model call on the same text and give one comment two verdicts, which
+ * is one row too many for the verdict a project holds per comment.
  */
 export async function judgeThreads(
   project: ScanProject,
@@ -165,7 +172,10 @@ export async function judgeThreads(
     for (const comment of representativeComments(thread)) {
       const own = discoveryItem(thread, comment);
       const commentHash = contentHash([own.title, own.parentBody, own.body]);
-      if (alreadyJudged(stored, leadKey(thread.post.id, comment.id), project.profileVersion, commentHash)) {
+      if (
+        commentOf.has(comment.id) ||
+        alreadyJudged(stored, leadKey(thread.post.id, comment.id), project.profileVersion, commentHash)
+      ) {
         continue;
       }
       discoverItems.push(own);

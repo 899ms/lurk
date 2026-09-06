@@ -23,6 +23,16 @@ export function leadKey(postId: string, commentId: string | null): string {
   return commentId ? `comment:${commentId}` : `post:${postId}`;
 }
 
+/**
+ * One row per key, the last one written. Postgres rejects a whole
+ * `on conflict do update` statement that carries the same conflict key twice
+ * ("cannot affect row a second time"), so two verdicts on one candidate inside
+ * a single scan must be settled here, before the statement is built.
+ */
+export function lastPerKey<T>(rows: T[], key: (row: T) => string): T[] {
+  return [...new Map(rows.map((row) => [key(row), row])).values()];
+}
+
 /** What a rescore replaces. The user's own status and miss reason are theirs. */
 const REJUDGED = {
   score: sql`excluded.score`,
@@ -40,7 +50,8 @@ const REJUDGED = {
  * its judgement replaced, so a rescore after a profile edit or a comment thread
  * is visible, while the status and the miss reason the user set are preserved.
  */
-export async function writeLeads(rows: LeadRow[]): Promise<number> {
+export async function writeLeads(input: LeadRow[]): Promise<number> {
+  const rows = lastPerKey(input, (row) => `${row.projectId} ${leadKey(row.postId, row.commentId)}`);
   const groups = [
     { rows: rows.filter((row) => row.commentId === null), onComment: false },
     { rows: rows.filter((row) => row.commentId !== null), onComment: true },

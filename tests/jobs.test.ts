@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { captureRequestId, withRequestId } from "@/lib/anyapi";
 import { HEARTBEAT_MS, LEASE_MS } from "@/jobs/lease";
+import { reasonFor } from "@/jobs/runner";
 import { LlmTimeoutError, LLM_CALL_TIMEOUT_MS, withCallTimeout } from "@/lib/llm";
 
 describe("request identity", () => {
@@ -32,6 +33,37 @@ describe("request identity", () => {
 
     expect(fast.requestId).toBe("fast");
     expect((await slow).requestId).toBe("slow");
+  });
+});
+
+describe("what a failed job records", () => {
+  it("keeps the whole chain, because the wrapper's message is only the query", () => {
+    const cause = Object.assign(new Error("ON CONFLICT DO UPDATE command cannot affect row"), {
+      code: "21000",
+    });
+    const wrapper = new Error("Failed query: insert into \"lead_evaluations\"", { cause });
+
+    expect(reasonFor(wrapper)).toBe(
+      'Failed query: insert into "lead_evaluations"; ON CONFLICT DO UPDATE command cannot affect row; code 21000',
+    );
+  });
+
+  it("names the row a foreign key rejected, which only the detail says", () => {
+    const cause = Object.assign(new Error("violates foreign key constraint"), {
+      code: "23503",
+      detail: "Key (comment_id)=(abc) is not present in table \"reddit_comments\".",
+    });
+
+    expect(reasonFor(new Error("Failed query: insert", { cause }))).toContain(
+      'detail Key (comment_id)=(abc) is not present in table "reddit_comments".',
+    );
+  });
+
+  it("leaves an error that carries no cause exactly as it reads", () => {
+    expect(reasonFor(new LlmTimeoutError(LLM_CALL_TIMEOUT_MS))).toBe(
+      new LlmTimeoutError(LLM_CALL_TIMEOUT_MS).message,
+    );
+    expect(reasonFor("not an error at all")).toBe("not an error at all");
   });
 });
 

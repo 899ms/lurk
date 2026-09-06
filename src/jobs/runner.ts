@@ -49,9 +49,42 @@ export async function claimNextJob(now = new Date()): Promise<Job | null> {
   return claimed[0] ?? null;
 }
 
-/** What a person reading the job should see: the message, never a stack. */
-function reasonFor(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+/** What a driver puts under its own error: the database's own complaint. */
+type Cause = { message?: unknown; code?: unknown; detail?: unknown; cause?: unknown };
+
+/** One piece of an error, on one line, or nothing when there is no text. */
+function line(value: unknown, label = ""): string | null {
+  const text = typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
+  return text === "" ? null : `${label}${text}`;
+}
+
+/**
+ * What a person reading the job should see: the message, never a stack. A
+ * failed statement arrives wrapped, and the wrapper's message is the SQL it
+ * tried, so every cause under it is kept too. Postgres names the rule that
+ * rejected the write in the cause's own message, code and detail, and without
+ * them a failed insert says only which table it was writing to.
+ */
+export function reasonFor(error: unknown): string {
+  if (!(error instanceof Error)) {
+    return String(error);
+  }
+  const parts = [line(error.message)];
+  const seen = new Set<unknown>([error]);
+  let cause: unknown = (error as Cause).cause;
+  while (typeof cause === "object" && cause !== null && !seen.has(cause)) {
+    seen.add(cause);
+    const { message, code, detail } = cause as Cause;
+    parts.push(line(message), line(code, "code "), line(detail, "detail "));
+    cause = (cause as Cause).cause;
+  }
+  const said = new Set<string>();
+  for (const part of parts) {
+    if (part !== null) {
+      said.add(part);
+    }
+  }
+  return [...said].join("; ");
 }
 
 /**
