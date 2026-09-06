@@ -114,18 +114,19 @@ export async function runDiscoveryRefresh(
   const fresh = dedupeThreads(found.observations.map((row) => ({ ...row, relevance: UNLABELED })))
     .filter((thread) => !known.has(thread.postId));
 
+  const brief = productBrief({
+    name: project.name,
+    pain: project.pain ?? "",
+    solution: project.solution ?? "",
+    targetUsers: project.targetUsers ?? "",
+    serviceGeography: project.geography ?? "",
+    budgetFit: project.budgetFit ?? "",
+    capabilities: parseTextList(project.capabilities),
+    exclusions: parseTextList(project.exclusions),
+  });
   const labels = await labelThreads({
     projectId,
-    productText: productBrief({
-      name: project.name,
-      pain: project.pain ?? "",
-      solution: project.solution ?? "",
-      targetUsers: project.targetUsers ?? "",
-      serviceGeography: project.geography ?? "",
-      budgetFit: project.budgetFit ?? "",
-      capabilities: parseTextList(project.capabilities),
-      exclusions: parseTextList(project.exclusions),
-    }),
+    productText: brief,
     candidates: fresh.map((thread) => ({
       id: thread.postId,
       subreddit: thread.subreddit,
@@ -144,6 +145,7 @@ export async function runDiscoveryRefresh(
     destinations,
     limits,
     competitors: mergeCompetitors(await existingCompetitors(projectId), competitorsFrom(labels)),
+    productTexts: [brief, ...problemPhrasings],
   });
   await enqueueJob("discovery_refresh", projectId, new Date(Date.now() + maxAgeMs));
   return { queries: queries.length, threads: fresh.length, costUsd: found.costUsd };

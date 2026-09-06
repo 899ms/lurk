@@ -93,11 +93,11 @@ export type LabelInput = {
   candidates: LabelCandidate[];
 };
 
-/** Labels one round of deduplicated threads in a single call. */
-export async function labelThreads(input: LabelInput): Promise<ThreadLabel[]> {
-  if (input.candidates.length === 0) {
-    return [];
-  }
+/** One call: these threads, judged against this product. */
+async function askLabels(
+  input: LabelInput,
+  candidates: LabelCandidate[],
+): Promise<ThreadLabel[]> {
   const answer = await generateStructured({
     purpose: "discovery_label",
     projectId: input.projectId,
@@ -108,11 +108,31 @@ export async function labelThreads(input: LabelInput): Promise<ThreadLabel[]> {
       input.productText,
       "",
       "RESULTS",
-      input.candidates.map(candidateText).join("\n\n"),
+      candidates.map(candidateText).join("\n\n"),
     ].join("\n"),
   });
   return keepCitedLabels(
     answer.results,
-    input.candidates.map((candidate) => candidate.id),
+    candidates.map((candidate) => candidate.id),
   );
+}
+
+/**
+ * Labels one round of deduplicated threads. A long list is answered short: the
+ * model skips threads it was given, and a thread nobody judged is evidence
+ * this app paid for and cannot count. So whatever came back short is asked
+ * again, on its own, with nothing else in the call to crowd it out. Anything
+ * still missing after that stays unlabeled, which ranking weighs at zero.
+ */
+export async function labelThreads(input: LabelInput): Promise<ThreadLabel[]> {
+  if (input.candidates.length === 0) {
+    return [];
+  }
+  const first = await askLabels(input, input.candidates);
+  const answered = new Set(first.map((label) => label.id));
+  const missing = input.candidates.filter((candidate) => !answered.has(candidate.id));
+  if (missing.length === 0) {
+    return first;
+  }
+  return [...first, ...(await askLabels(input, missing))];
 }

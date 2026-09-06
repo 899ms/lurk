@@ -1,6 +1,13 @@
 import type { EntityRole, Relevance, ThreadLabel } from "./label";
 import type { Coverage } from "./queries";
-import { collapseDestinations, isNumberWord, meaningWords, words } from "./phrases";
+import {
+  cityPart,
+  collapseDestinations,
+  isNumberWord,
+  meaningWords,
+  stripRedditSuffix,
+  words,
+} from "./phrases";
 
 /**
  * Turning Google evidence into a plan: which communities are worth reading,
@@ -59,7 +66,7 @@ export function dedupeThreads(rows: EvidenceLike[]): ThreadEvidence[] {
   return [...byPost.entries()].map(([postId, group]) => ({
     postId,
     subreddit: group[0].subreddit.toLowerCase(),
-    title: group[0].title ?? "",
+    title: stripRedditSuffix(group[0].title ?? ""),
     snippet: group[0].snippet ?? "",
     weight: Math.max(...group.map((row) => weightOf(row.relevance))),
     bestPosition: Math.min(...group.map((row) => row.position ?? Number.MAX_SAFE_INTEGER)),
@@ -72,7 +79,7 @@ export function dedupeThreads(rows: EvidenceLike[]): ThreadEvidence[] {
 export function isDestinationQuery(query: string, destinations: string[]): boolean {
   const asked = words(query).join(" ");
   return destinations.some((name) => {
-    const place = words(name).join(" ");
+    const place = words(cityPart(name)).join(" ");
     return place.length > 0 && asked.includes(place);
   });
 }
@@ -203,6 +210,16 @@ export function rankFamilies(rows: EvidenceLike[], destinations: string[]): Fami
 
 const NEGATIONS = new Set(["no", "non", "not", "without", "cannot", "cant", "wont"]);
 
+/**
+ * Words a Reddit title repeats because it is a Reddit title, not because it is
+ * what the thread is about. Any of these as the anchor turns the search into
+ * "(reddit) AND (...)", which matches the whole site and finds nobody.
+ */
+const NOT_AN_ANCHOR = new Set([
+  "advice", "anyone", "askreddit", "help", "please", "post", "question", "questions",
+  "reddit", "sub", "subreddit", "thanks", "thread", "tips",
+]);
+
 /** A constraint said in more than one word, kept whole so Reddit matches it. */
 function multiWordConstraints(tokens: string[]): string[] {
   const found: string[] = [];
@@ -238,13 +255,30 @@ function orClause(terms: string[]): string {
   return `(${terms.join(" OR ")})`;
 }
 
+/** The number a term carries, which is what orders 18 before "under 21". */
+function numberIn(term: string): number | null {
+  const found = term.match(/\d+/);
+  return found ? Number(found[0]) : null;
+}
+
+/** True when every number in this term is one the product itself talks about. */
+function saysNumber(term: string, productNumbers: Set<string>): boolean {
+  const found = term.match(/\d+/g);
+  return !found || found.every((number) => productNumbers.has(number));
+}
+
 /**
  * One problem family's evidence phrases as a Reddit search. The subject the
  * family keeps repeating becomes one clause with its singular and plural, and
  * every constraint the buyers stated - an age, a limit, a refusal - becomes a
  * second clause, so the search asks for the demand and not merely the topic.
+ * A number only counts as a constraint when the product says that number too:
+ * a Reddit title is full of numbers, and 4 or 17 in one of them is a room
+ * count or a year, never the age this product is about. A search with no
+ * subject or no constraint is not returned at all, because either half alone
+ * matches most of Reddit.
  */
-export function compileBooleanQuery(phrases: string[]): string {
+export function compileBooleanQuery(phrases: string[], productNumbers: Set<string>): string {
   const subjectsPerPhrase: string[][] = [];
   const constraintsPerPhrase: string[][] = [];
   for (const phrase of phrases) {
@@ -252,15 +286,21 @@ export function compileBooleanQuery(phrases: string[]): string {
     const multi = multiWordConstraints(all);
     const consumed = new Set(multi.flatMap((pair) => pair.split(" ")));
     const constraints = [
-      ...multi.map((pair) => `"${pair}"`),
+      ...multi.filter((pair) => saysNumber(pair, productNumbers)).map((pair) => `"${pair}"`),
       ...all.filter(
-        (word) => !consumed.has(word) && (isNumberWord(word) || NEGATIONS.has(word)),
+        (word) =>
+          !consumed.has(word) &&
+          ((isNumberWord(word) && productNumbers.has(word)) || NEGATIONS.has(word)),
       ),
     ];
     constraintsPerPhrase.push(constraints);
     subjectsPerPhrase.push(
       meaningWords(phrase).filter(
-        (word) => !consumed.has(word) && !isNumberWord(word) && !NEGATIONS.has(word),
+        (word) =>
+          !consumed.has(word) &&
+          !isNumberWord(word) &&
+          !NEGATIONS.has(word) &&
+          !NOT_AN_ANCHOR.has(word),
       ),
     );
   }
@@ -277,17 +317,18 @@ export function compileBooleanQuery(phrases: string[]): string {
     (left, right) => (stemCounts.get(right) ?? 0) - (stemCounts.get(left) ?? 0) || left.localeCompare(right),
   )[0];
 
-  const clauses: string[] = [];
-  if (bestStem) {
-    clauses.push(orClause([...(stems.get(bestStem) ?? [])].sort()));
-  }
   const constraints = [...countByPhrase(constraintsPerPhrase).keys()];
-  const numbers = constraints.filter(isNumberWord).sort((left, right) => Number(left) - Number(right));
-  const rest = constraints.filter((term) => !isNumberWord(term)).sort();
-  if (numbers.length + rest.length > 0) {
-    clauses.push(orClause([...numbers, ...rest]));
+  const numbers = constraints
+    .filter((term) => numberIn(term) !== null)
+    .sort((left, right) => (numberIn(left) ?? 0) - (numberIn(right) ?? 0) || left.localeCompare(right));
+  const rest = constraints.filter((term) => numberIn(term) === null).sort();
+  if (!bestStem || numbers.length + rest.length === 0) {
+    return "";
   }
-  return clauses.join(" AND ");
+  return [
+    orClause([...(stems.get(bestStem) ?? [])].sort()),
+    orClause([...numbers, ...rest]),
+  ].join(" AND ");
 }
 
 /** The same search asked inside one community. */

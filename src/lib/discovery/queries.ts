@@ -1,4 +1,4 @@
-import { familyKey, meaningWords } from "./phrases";
+import { cityPart, familyKey, meaningWords } from "./phrases";
 
 /**
  * The Google searches discovery buys. Half ask the problem in the buyer's own
@@ -31,10 +31,17 @@ export type DiscoveryQuery = {
  */
 export const MIN_NEW_RELEVANT = 2;
 
+/**
+ * One query: the phrasing exactly as the buyer would say it, and the city if
+ * this query is about a place. The phrasing is not rewritten, because Google
+ * answers a question and not a bag of words, and the words a person leaves out
+ * of "hotels that allow 18 year olds" are the ones that make it a search.
+ */
 function problemQuery(phrasing: string, destination: string | null): DiscoveryQuery {
-  const body = meaningWords(phrasing).join(" ");
+  const body = phrasing.trim().replace(/\s+/g, " ");
+  const place = destination === null ? "" : cityPart(destination);
   return {
-    query: [SITE_SCOPE, body, destination ?? ""].filter(Boolean).join(" ").trim(),
+    query: [SITE_SCOPE, body, place].filter(Boolean).join(" ").trim(),
     family: familyKey(phrasing),
     destination,
     kind: destination === null ? "problem" : "destination",
@@ -98,56 +105,52 @@ function pairKey(family: string, destination: string | null): string {
 }
 
 /**
- * What to ask next when a problem family or a place has produced no relevant
- * thread. Unasked phrasings and unasked places come first, because a cluster
- * that was never queried is not a cluster that failed. Then the pairs we have
- * not put together yet, weakest family against best-covered place, so an
- * expansion spends on the hole while leaning on a place already proven.
+ * What to ask next, in the order the plan spends on: first the problem family
+ * that no thread has answered yet, because a demand with no evidence is the
+ * hole worth buying; then the places the page names, in the order it names
+ * them, each with the next phrasing in turn. One round is one rotation of the
+ * phrasings, so a product that lists twenty cities asks a few of them, is
+ * judged by the stop rule, and leaves the rest to the weekly refresh instead
+ * of spending its whole maximum on city after city with the same sentence.
  */
 export function expandDiscoveryQueries(input: ExpansionInput): DiscoveryQuery[] {
   const room = input.max - input.used.length;
-  if (room <= 0) {
+  const phrasings = input.problemPhrasings.filter((phrase) => meaningWords(phrase).length > 0);
+  if (room <= 0 || phrasings.length === 0) {
     return [];
   }
-  const askedFamilies = new Set(input.used.map((item) => item.family));
   const askedPairs = new Set(input.used.map((item) => pairKey(item.family, item.destination)));
-  const askedPlaces = new Set(
-    input.used.map((item) => item.destination).filter((name): name is string => name !== null),
-  );
-  const phrasings = input.problemPhrasings.filter((phrase) => meaningWords(phrase).length > 0);
-  const covered = (family: string) => input.coverage.families[family] ?? 0;
-  const bestPhrasing = [...phrasings].sort(
-    (left, right) => covered(familyKey(right)) - covered(familyKey(left)),
-  )[0];
+  const familyCover = (phrase: string) => input.coverage.families[familyKey(phrase)] ?? 0;
+  const placeCover = (name: string) => input.coverage.destinations[name] ?? 0;
 
   const proposals: DiscoveryQuery[] = [];
-  for (const phrase of phrasings) {
-    if (!askedFamilies.has(familyKey(phrase))) {
+  const provenPlaces = [...input.destinations].sort(
+    (left, right) => placeCover(right.name) - placeCover(left.name),
+  );
+  for (const phrase of phrasings.filter((item) => familyCover(item) === 0)) {
+    const family = familyKey(phrase);
+    if (!askedPairs.has(pairKey(family, null))) {
       proposals.push(problemQuery(phrase, null));
+      continue;
+    }
+    const place = provenPlaces.find((item) => !askedPairs.has(pairKey(family, item.name)));
+    if (place) {
+      proposals.push(problemQuery(phrase, place.name));
     }
   }
-  for (const place of input.destinations) {
-    if (!askedPlaces.has(place.name) && bestPhrasing) {
-      proposals.push(problemQuery(bestPhrasing, place.name));
-    }
-  }
-  const places = [...input.destinations].sort(
-    (left, right) =>
-      (input.coverage.destinations[right.name] ?? 0) - (input.coverage.destinations[left.name] ?? 0),
-  );
-  const weakestFirst = [...phrasings].sort(
-    (left, right) => covered(familyKey(left)) - covered(familyKey(right)),
-  );
-  for (const phrase of weakestFirst) {
-    for (const place of places) {
+
+  let turn = 0;
+  for (const place of input.destinations.filter((item) => placeCover(item.name) === 0)) {
+    for (let tried = 0; tried < phrasings.length; tried += 1) {
+      const phrase = phrasings[turn % phrasings.length];
+      turn += 1;
       if (!askedPairs.has(pairKey(familyKey(phrase), place.name))) {
         proposals.push(problemQuery(phrase, place.name));
+        break;
       }
     }
   }
-  return unique(proposals)
-    .filter((item) => !askedPairs.has(pairKey(item.family, item.destination)))
-    .slice(0, room);
+  return unique(proposals).slice(0, Math.min(room, phrasings.length));
 }
 
 /**

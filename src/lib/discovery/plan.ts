@@ -29,8 +29,36 @@ export type PlanInput = {
   competitors: CompetitorRank[];
   /** The communities a place query found, which get their own scoped search. */
   scopedCommunities: string[];
+  /** The numbers this product itself says, which is what makes one a constraint. */
+  productNumbers: Set<string>;
   limits: TierLimits | null;
 };
+
+/**
+ * What a community has to have produced before the scan spends a polling slot
+ * on it: two relevant threads, or one relevant and two that might be. One
+ * thread is real evidence and keeps the community on the list as a candidate,
+ * but it is not yet a place this product's buyers are known to ask in.
+ */
+export const ACTIVE_EVIDENCE = 2;
+
+/**
+ * Two problem families can say the same demand in the end - "hotels under 21"
+ * and "hotel check in age" compile to one search - and a project holds one row
+ * per search. The search is kept once, carrying the evidence of the strongest
+ * family behind it, in the order the strongest family put it.
+ */
+function dedupeKeywords(rows: PlannedKeyword[]): PlannedKeyword[] {
+  const best = new Map<string, PlannedKeyword>();
+  for (const row of rows) {
+    const seen = best.get(row.keyword);
+    best.set(row.keyword, {
+      keyword: row.keyword,
+      evidence: Math.max(seen?.evidence ?? 0, row.evidence),
+    });
+  }
+  return [...best.values()];
+}
 
 /**
  * What the ranking means for the plan. A community with no relevant evidence
@@ -39,19 +67,24 @@ export type PlanInput = {
  */
 export function planFromRanks(input: PlanInput): DiscoveryPlan {
   const earned = input.communities.filter((item) => item.weighted > 0);
-  const activeCount = input.limits?.subredditsPerProject ?? earned.length;
-  const subreddits: PlannedSubreddit[] = earned.map((item, index) => ({
-    name: item.name,
-    state: index < activeCount ? "active" : "candidate",
-    evidence: Math.round(item.weighted),
-  }));
+  const slots = input.limits?.subredditsPerProject ?? earned.length;
+  let taken = 0;
+  const subreddits: PlannedSubreddit[] = earned.map((item) => {
+    const polls = item.weighted >= ACTIVE_EVIDENCE && taken < slots;
+    taken += polls ? 1 : 0;
+    return {
+      name: item.name,
+      state: polls ? "active" : "candidate",
+      evidence: Math.round(item.weighted),
+    };
+  });
 
   const families = input.families.filter((family) => family.phrases.length > 0);
   const broad = families.map((family) => ({
-    keyword: compileBooleanQuery(family.phrases),
+    keyword: compileBooleanQuery(family.phrases, input.productNumbers),
     evidence: Math.round(family.weighted),
   }));
-  const top = broad[0];
+  const top = broad.find((item) => item.keyword.length > 0);
   const scoped = top
     ? input.scopedCommunities.map((name) => ({
         keyword: scopedBooleanQuery(top.keyword, name),
@@ -59,7 +92,7 @@ export function planFromRanks(input: PlanInput): DiscoveryPlan {
       }))
     : [];
   const keywords = capped(
-    [...broad, ...scoped].filter((item) => item.keyword.length > 0),
+    dedupeKeywords([...broad, ...scoped].filter((item) => item.keyword.length > 0)),
     input.limits?.keywordsPerProject,
   );
 

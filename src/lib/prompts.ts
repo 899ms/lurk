@@ -20,7 +20,7 @@ Describe only what the page supports. Use the page's own words wherever you can,
 - exclusions: what it cannot do, does not cover, or refuses, one short phrase each. Empty when the page states none.
 - serviceGeography: where the product itself works - the places it covers or operates in. This is not where its buyers live. Empty string when the page binds it to nowhere.
 - destinations: the individual places this product serves, each with the exact page text you read it from. Take them only from the page's own navigation links or body text. Never add a place the page does not name, however obvious it seems. Return an empty list when the page names none.
-- problemPhrasings: 4 to 6 sentences saying the problem the way a buyer would say it out loud to another person, not the way the company writes it. Keep the buyer's own constraints in the sentence: ages, dates, prices, negations, and words like "without" or "no".
+- problemPhrasings: 4 to 6 short problem statements in the buyer's own words, each 4 to 8 words, each one something a person would type into a search box or say to a friend. Keep the constraint that makes it this product's problem: an age, a limit, a refusal, a negation. Leave out prices, dates, personal details, city and country names, product and company names, and anything that makes it a sentence about one person rather than the problem itself. For a site listing hotels that check in guests under 21, they would be: "hotels that allow 18 year olds", "under 21 hotel check in", "hotel refused check in because of age", "minimum hotel check in age".
 - budgetFit: one sentence on who can afford it.`;
 
 /**
@@ -38,10 +38,12 @@ For every result id you are given, return exactly one label, using that id uncha
   - plausible: the topic fits but the thread does not show a person with that problem.
   - irrelevant: a different problem, a seller, or nothing to do with the product.
 - destination: the single place the thread is about, in the words the thread uses, or null when it names none.
-- entities: every product, company or domain named in the title or the snippet, with what it is to this product:
-  - direct_substitute: it solves the same problem for the same person.
-  - booking_alternative: a way to get the same outcome that is not this kind of product.
-  - supplier: something this kind of product buys from or sits on top of.
+- entities: every product, company or domain named in the title or the snippet, with what it is to this product.
+
+Before you label an entity, read the PRODUCT facts and settle on THE JOB: the one specific thing this product does for the person who uses it, said in a single phrase. For a site that lists hotels by their minimum check-in age, THE JOB is "finding hotels that will check in a guest under 21", not "booking a hotel". Judge every entity against THE JOB, not against the wider market it sits in:
+  - direct_substitute: it does THE JOB itself, so a person with this exact problem could use it instead. A niche site, list, tool or community answer built for THE JOB qualifies: for the hotel example, hotelages.com does.
+  - booking_alternative: a general marketplace, comparison site, agency or platform for the wider category, which does not do THE JOB. A general booking or travel site is always this, however large, and never a direct substitute.
+  - supplier: a business whose own goods or services this kind of product lists, indexes, links to or sits on top of. An individual hotel or hotel chain in the hotel example is this.
   - reference: named only as context, a forum, a publisher or a place.
   - irrelevant: named for an unrelated reason.
   Return an empty list when the text names none. Never add one the text does not name.`;

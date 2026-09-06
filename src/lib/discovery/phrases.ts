@@ -34,6 +34,31 @@ export function isNumberWord(word: string): boolean {
   return /^\d+$/.test(word);
 }
 
+/**
+ * How Google ends a Reddit result's title: the community it is in, the site
+ * name, or both. None of that is anything the buyer wrote, so it is cut off
+ * before any phrase work, or "reddit" becomes the word every family repeats.
+ */
+const REDDIT_TITLE_SUFFIX = /\s*(?:[:|-]\s*r\/[a-z0-9_]+|[:|-]\s*reddit)\s*$/i;
+
+/** One Google title as the person wrote it, without Google's own suffix. */
+export function stripRedditSuffix(title: string): string {
+  let text = title.trim();
+  for (let cut = text.replace(REDDIT_TITLE_SUFFIX, ""); cut !== text; cut = text.replace(REDDIT_TITLE_SUFFIX, "")) {
+    text = cut;
+  }
+  return text.trim();
+}
+
+/**
+ * The part of a destination a person actually types: "Miami, Florida" is asked
+ * about as "Miami". The state is how the page disambiguates it, not how the
+ * buyer says it, and putting it in a search only narrows the results away.
+ */
+export function cityPart(name: string): string {
+  return name.split(",")[0].trim();
+}
+
 /** One sentence as lowercase words, punctuation and possessives dropped. */
 export function words(text: string): string[] {
   return text
@@ -53,6 +78,24 @@ export function meaningWords(text: string): string[] {
 }
 
 /**
+ * Every number this product itself says, from its phrasings and its facts. A
+ * Reddit title is full of numbers that mean nothing to us - a room rate, a
+ * count of replies, a year - and only the ones the product talks about are a
+ * constraint worth searching for.
+ */
+export function numberTerms(texts: string[]): Set<string> {
+  const found = new Set<string>();
+  for (const text of texts) {
+    for (const word of words(text)) {
+      if (isNumberWord(word)) {
+        found.add(word);
+      }
+    }
+  }
+  return found;
+}
+
+/**
  * The problem family one phrasing belongs to. Two phrasings of the same demand
  * share their leading meaning words, which is what makes this stable enough to
  * key evidence on without asking the model for a label it would invent.
@@ -69,7 +112,7 @@ export function familyKey(phrasing: string): string {
  */
 export function collapseDestinations(text: string, destinations: string[]): string {
   const names = destinations
-    .map((name) => words(name).join(" "))
+    .flatMap((name) => [words(name).join(" "), words(cityPart(name)).join(" ")])
     .filter((name) => name.length > 0)
     .sort((left, right) => right.length - left.length);
   let collapsed = words(text).join(" ");

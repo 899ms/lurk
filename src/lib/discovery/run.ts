@@ -2,6 +2,7 @@ import { clientForUser } from "@/lib/anyapi";
 import type { FetchContext } from "@/lib/reddit/fetch";
 import { TIERS, type TierLimits } from "@/lib/tiers";
 import { labelThreads, type ThreadLabel } from "./label";
+import { numberTerms } from "./phrases";
 import { planFromRanks, publishDiscoveryPlan } from "./plan";
 import {
   buildDiscoveryQueries,
@@ -112,6 +113,8 @@ export type PublishInput = {
   destinations: Destination[];
   limits: TierLimits | null;
   competitors: CompetitorRank[];
+  /** Everything this product says about itself, which is where its numbers come from. */
+  productTexts: string[];
 };
 
 /** Ranks everything this project has ever seen and publishes the new plan. */
@@ -128,6 +131,7 @@ export async function publishFromEvidence(input: PublishInput) {
     families,
     competitors: input.competitors,
     scopedCommunities: scoped,
+    productNumbers: numberTerms(input.productTexts),
     limits: input.limits,
   });
   await publishDiscoveryPlan(input.projectId, plan);
@@ -203,6 +207,7 @@ export async function runDiscovery(input: DiscoveryInput): Promise<DiscoveryOutc
     destinations: input.destinations,
     limits: input.limits,
     competitors: mergeCompetitors([], competitorsFrom(labels)),
+    productTexts: [brief, ...input.problemPhrasings],
   });
   return {
     queries: used.length,
