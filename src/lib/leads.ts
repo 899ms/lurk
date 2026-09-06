@@ -123,7 +123,7 @@ export async function listReviewItems(projectId: string, days: number): Promise<
       fit: leadEvaluations.fit,
       intent: leadEvaluations.intent,
       needState: leadEvaluations.needState,
-      createdAt: sql<Date>`coalesce(${redditComments.createdAt}, ${redditPosts.createdAt})`,
+      createdAt: sql`coalesce(${redditComments.createdAt}, ${redditPosts.createdAt})`.mapWith(redditPosts.createdAt),
       judgedAt: leadEvaluations.judgedAt,
     })
     .from(leadEvaluations)

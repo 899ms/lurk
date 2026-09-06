@@ -69,6 +69,7 @@ describe.skipIf(!hasDatabase)("runScan against a database", () => {
   let upsertPosts: typeof import("@/lib/reddit/store").upsertPosts;
   let upsertComments: typeof import("@/lib/reddit/store").upsertComments;
   let listLeads: typeof import("@/lib/leads").listLeads;
+  let listReviewItems: typeof import("@/lib/leads").listReviewItems;
   let eq: typeof import("drizzle-orm").eq;
 
   beforeEach(async () => {
@@ -77,7 +78,7 @@ describe.skipIf(!hasDatabase)("runScan against a database", () => {
     schema = await import("@/db/schema");
     ({ runScan } = await import("@/lib/scan/run"));
     ({ upsertPosts, upsertComments } = await import("@/lib/reddit/store"));
-    ({ listLeads } = await import("@/lib/leads"));
+    ({ listLeads, listReviewItems } = await import("@/lib/leads"));
     ({ eq } = await import("drizzle-orm"));
     generateStructured.mockReset();
     for (const mock of [fetchSearch, fetchSubredditPosts, fetchPost, fetchPostComments]) {
@@ -177,6 +178,20 @@ describe.skipIf(!hasDatabase)("runScan against a database", () => {
     generateStructured.mockClear();
     await runScan(row.id, randomUUID());
     expect(generateStructured).not.toHaveBeenCalled();
+  });
+
+  it("dates a held candidate with a real Date, not the raw column text", async () => {
+    const row = await project();
+    const [only] = await posts(1);
+    fetchSearch.mockResolvedValue({ value: [only], reused: true, costUsd: 0 });
+    fetchPost.mockResolvedValue({ value: [only], reused: true, costUsd: 0 });
+    model([only.id], (id) => assessment(id, { decision: "review", fit: 2 }));
+
+    await runScan(row.id, randomUUID());
+    const held = await listReviewItems(row.id, 30);
+    expect(held).toHaveLength(1);
+    expect(held[0]?.createdAt).toBeInstanceOf(Date);
+    expect(held[0]?.judgedAt).toBeInstanceOf(Date);
   });
 
   it("judges a candidate again once the product profile has changed", async () => {
