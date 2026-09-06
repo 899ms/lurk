@@ -1,8 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { withoutKnownLeads, leadKey } from "@/lib/scan/leads";
+import { SCORER_SYSTEM } from "@/lib/prompts";
 import { MAX_POST_READS_FREE, foldScore, postReadCap } from "@/lib/scan/constants";
 import { retentionCutoff } from "@/lib/retention";
 import { TIERS } from "@/lib/tiers";
+
+const generateStructured = vi.fn();
+
+vi.mock("@/lib/llm", () => ({ generateStructured }));
+
+const { scoreItems } = await import("@/lib/scan/score");
 
 describe("score folding", () => {
   it("weights intent double", () => {
@@ -63,5 +70,44 @@ describe("retention cutoff", () => {
     const now = new Date("2026-09-05T00:00:00Z");
     const days = (now.getTime() - retentionCutoff(now).getTime()) / (24 * 60 * 60 * 1000);
     expect(days).toBe(TIERS.free.feedWindowDays);
+  });
+});
+
+/**
+ * A real scan scored this comment 63 and offered it as a lead. The commenter is
+ * recommending a product, not looking for one, so it belongs on the seller side.
+ */
+describe("scoring a recommendation", () => {
+  it("carries the seller-side verdict through to the lead", async () => {
+    generateStructured.mockResolvedValue({
+      items: [
+        {
+          id: "c_tally",
+          fit: 7,
+          intent: 6,
+          engagement: 6,
+          stage: "comparing",
+          reason: "Recommends a form builder to someone else, and wants nothing themselves.",
+          matchedPhrase: "Tally will cover all three of those easily",
+          sellerSide: true,
+        },
+      ],
+    });
+    const judged = await scoreItems("project-1", "A form builder", [
+      {
+        id: "c_tally",
+        title: "Looking for a form tool with logic, payments and webhooks",
+        subreddit: "SaaS",
+        body: "Tally will cover all three of those easily, and the free plan is generous.",
+      },
+    ]);
+    expect(judged).toHaveLength(1);
+    expect(judged[0].sellerSide).toBe(true);
+    expect(judged[0].score).toBe(foldScore(7, 6, 6));
+    expect(generateStructured.mock.calls[0][0].system).toBe(SCORER_SYSTEM);
+  });
+
+  it("tells the model that recommending a product is seller side", () => {
+    expect(SCORER_SYSTEM).toContain("recommending or defending a product they are not themselves");
   });
 });

@@ -36,5 +36,5 @@ export const SCORER_SYSTEM = `You score Reddit posts and comments as sales leads
 - stage: problem_aware, solution_seeking, comparing or purchase_ready.
 - reason: one plain sentence naming the pain and what they asked for.
 - matchedPhrase: a verbatim substring of the title or body, copied exactly.
-- sellerSide: true when the poster is selling, promoting, or looking for clients rather than buying.
+- sellerSide: true when this person is selling rather than buying. That covers promoting their own product, looking for clients, and recommending or defending a product they are not themselves looking for, however helpful the recommendation sounds.
 ${SCORING_HONESTY}`;
