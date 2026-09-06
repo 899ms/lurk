@@ -189,6 +189,89 @@ on the lead.
 - A free trial key with starter credit and no card is a sign-up away at
   <https://getanyapi.com>.
 
+## Hosting it on Azure
+
+Self-hosting needs none of this. It is how the one hosted instance runs.
+
+### Provision, once
+
+`scripts/azure-provision.sh` creates everything in one resource group and is safe to run
+again: every step checks for the resource first. Secrets are never arguments to it. They
+live in `deploy/env.production`, which is gitignored, and the script generates the ones you
+should not choose yourself.
+
+```bash
+mkdir -p deploy
+cat > deploy/env.production <<'EOF'
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
+CLERK_SECRET_KEY=
+ANYAPI_HOUSE_API_KEY=
+OPENROUTER_API_KEY=
+RESEND_API_KEY=
+ALERTS_FROM_EMAIL=
+EOF
+
+RESOURCE_GROUP=reddit-leads-prod scripts/azure-provision.sh --dry-run
+RESOURCE_GROUP=reddit-leads-prod scripts/azure-provision.sh
+```
+
+It writes `PG_ADMIN_PASSWORD`, `APP_ENCRYPTION_KEY`, `DATABASE_URL` and `APP_URL` back into
+that file, and sets the same values as Container App secrets. Nothing else holds them.
+
+What it creates, all in `centralus` by default and all on the smallest sensible tier:
+
+| Resource | Tier |
+|---|---|
+| Container registry | Basic |
+| Postgres flexible server, plus a database and a firewall rule for Azure services | Burstable `Standard_B1ms`, 32 GiB, version 17 |
+| Container Apps environment | Consumption |
+| Container app, one replica, port 3000, external ingress | 0.5 vCPU, 1 GiB |
+| User-assigned managed identity with `AcrPull` on the registry | - |
+
+The app is pinned to exactly one replica because `RUN_SCHEDULER=true` must run on exactly
+one process.
+
+A custom domain is optional and off until you have one. Set `DOMAIN` and the script adds the
+hostname, asks for a managed certificate and binds it, after printing the CNAME and
+`asuid` TXT records you must publish first:
+
+```bash
+RESOURCE_GROUP=reddit-leads-prod DOMAIN=leads.example.com scripts/azure-provision.sh
+```
+
+### Let GitHub deploy
+
+`.github/workflows/deploy.yml` signs in with OpenID Connect, so no Azure password is stored
+on GitHub. `scripts/azure-github-oidc.sh` creates the app registration, the federated
+credential that trusts one repository and branch, and the two role assignments the workflow
+needs:
+
+```bash
+GITHUB_REPO=owner/repo RESOURCE_GROUP=reddit-leads-prod scripts/azure-github-oidc.sh --dry-run
+GITHUB_REPO=owner/repo RESOURCE_GROUP=reddit-leads-prod scripts/azure-github-oidc.sh
+```
+
+Then set these on the repository and remove `if: false` from the `deploy` job. That is the
+whole remaining step.
+
+| Repository variable | Where it comes from |
+|---|---|
+| `AZURE_RESOURCE_GROUP` | the resource group you provisioned |
+| `AZURE_CONTAINER_REGISTRY` | registry name, printed by the provision script |
+| `AZURE_CONTAINER_APP` | container app name, printed by the provision script |
+| `APP_HEALTH_URL` | `https://<hostname>/api/health`, printed by the provision script |
+
+| Repository secret | Where it comes from |
+|---|---|
+| `AZURE_CLIENT_ID` | printed by `scripts/azure-github-oidc.sh` |
+| `AZURE_TENANT_ID` | printed by `scripts/azure-github-oidc.sh` |
+| `AZURE_SUBSCRIPTION_ID` | printed by `scripts/azure-github-oidc.sh` |
+
+A deploy builds the image, pushes it, rolls the container app to a revision named after the
+commit, and then polls `APP_HEALTH_URL` until it answers 200. Migrations are not a separate
+job: `docker-entrypoint.sh` applies them before the server starts, and one replica means
+they run once.
+
 ## Development
 
 ```bash
