@@ -1,7 +1,9 @@
 import type { jobs } from "@/db/schema";
 import { deleteExpiredPosts } from "@/lib/retention";
 import { runScan } from "@/lib/scan/run";
+import { runDigest } from "./digest";
 import { enqueueOnce } from "./enqueue";
+import { runSeoRefreshJob } from "./seo";
 
 export type Job = typeof jobs.$inferSelect;
 export type JobHandler = (job: Job) => Promise<void>;
@@ -17,6 +19,8 @@ export const JOB_HANDLERS: Record<string, JobHandler> = {
     }
     await runScan(job.projectId, job.id);
   },
+  seo_refresh: runSeoRefreshJob,
+  digest: runDigest,
   retention: async () => {
     await deleteExpiredPosts();
     await enqueueOnce("retention", new Date(Date.now() + DAY_MS));
