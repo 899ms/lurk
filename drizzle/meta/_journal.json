@@ -29,6 +29,20 @@
       "when": 1788657273978,
       "tag": "0003_nosy_jamie_braddock",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788700000000,
+      "tag": "0004_competitor_mentions",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788660000000,
+      "tag": "0004_api_request_counts",
+      "breakpoints": true
     }
   ]
 }
