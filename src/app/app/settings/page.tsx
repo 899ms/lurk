@@ -1,3 +1,5 @@
+import { Bell, KeyRound } from "lucide-react";
+import { SettingsLinkCard } from "@/components/SettingsLinkCard";
 import { WalletPanel } from "@/components/WalletPanel";
 import { requireLocalUser } from "@/lib/auth";
 import { walletConnection } from "@/lib/anyapi";
@@ -11,6 +13,18 @@ export default async function SettingsPage() {
         Settings
       </h1>
       <WalletPanel connectedAt={connection?.connectedAt ?? null} />
+      <SettingsLinkCard
+        href="/app/settings/alerts"
+        icon={Bell}
+        title="Alerts"
+        sentence="Where new leads land: a daily email digest, Slack, Discord or your own webhook."
+      />
+      <SettingsLinkCard
+        href="/app/settings/api"
+        icon={KeyRound}
+        title="API and MCP"
+        sentence="Read your projects, leads and spend from a script or an agent."
+      />
     </div>
   );
 }
