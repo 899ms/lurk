@@ -1,4 +1,17 @@
+import { Box, Lightbulb, Radar, Receipt, Search, Settings, Swords } from "lucide-react";
+import type { RailIcon } from "@/components/Rail";
 import { MOCK_RAIL } from "./mockContent";
+
+/** The same icon per destination the app's own rail uses. */
+const ICONS: Record<RailIcon, React.ComponentType<{ className?: string }>> = {
+  radar: Radar,
+  search: Search,
+  lightbulb: Lightbulb,
+  swords: Swords,
+  box: Box,
+  receipt: Receipt,
+  settings: Settings,
+};
 
 type MockFrameProps = {
   active: string;
@@ -28,23 +41,29 @@ export function MockFrame({ active, title, actions, children }: MockFrameProps) 
               <span className="px-2 pb-1 text-[11px] uppercase tracking-wide text-fg-muted">
                 {group.label}
               </span>
-              {group.items.map((item) => (
+              {group.items.map((item) => {
+                const Icon = ICONS[item.icon];
+                return (
                 <span
                   key={item.name}
                   className={
                     item.name === active
-                      ? "flex items-center justify-between rounded-control bg-surface-2 px-2 py-1.5 text-small text-fg"
-                      : "flex items-center justify-between rounded-control px-2 py-1.5 text-small text-fg-muted"
+                      ? "flex items-center justify-between gap-2 rounded-control bg-surface-2 px-2 py-1.5 text-small text-fg"
+                      : "flex items-center justify-between gap-2 rounded-control px-2 py-1.5 text-small text-fg-muted"
                   }
                 >
-                  {item.name}
+                  <span className="flex items-center gap-2">
+                    <Icon className="size-4 shrink-0 text-fg-muted" />
+                    {item.name}
+                  </span>
                   {item.count === undefined ? null : (
                     <span className="rounded-control bg-surface-2 px-1.5 text-mono tabular-nums text-fg-muted">
                       {item.count}
                     </span>
                   )}
                 </span>
-              ))}
+                );
+              })}
             </div>
           ))}
         </aside>
