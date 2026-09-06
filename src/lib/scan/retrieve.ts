@@ -18,13 +18,15 @@ import {
 } from "./coverage";
 import type { ScanProject } from "./project";
 import { fetchFeedThreads } from "./serp";
-import { lastWideSweeps, markCovered, recordSources, type CandidateSource } from "./sources";
+import { lastWideSweeps, recordSources, type CandidateSource } from "./sources";
 
 /**
  * One scan's retrieval: the plan's searches, its scoped searches, its listing
  * pilots and its Google feed, each covering the window from its own watermark,
- * merged by post with every source that found it. A fetch that fails moves no
- * watermark and is reported as a gap, so a window is never silently skipped.
+ * merged by post with every source that found it. A fetch that fails covers no
+ * window and is reported as a gap, so a window is never silently skipped. The
+ * windows a fetch did cover are handed back for the caller to mark, because a
+ * watermark may only move once the posts under it have been judged and stored.
  */
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -39,6 +41,12 @@ export type Retrieval = {
   outsideWindow: number;
   /** reddit.post calls already spent, which the shortlist read may not spend twice. */
   hydrated: number;
+  /**
+   * The windows this scan covered, waiting for their watermarks to move. The
+   * caller marks them with markCovered once these candidates' judgements are
+   * written, so a death between the fetch and the verdict re-covers the window.
+   */
+  covered: { row: PlanRow; at: Date }[];
 };
 
 type Loop = {
@@ -210,7 +218,8 @@ export type RetrieveInput = {
 
 /**
  * Runs the whole plan for one scan and returns what it found, once, with the
- * provenance rows already written.
+ * provenance rows already written and the covered windows left for the caller
+ * to mark.
  */
 export async function retrieve(input: RetrieveInput): Promise<Retrieval> {
   const { project, ctx, limits, windowMs } = input;
@@ -258,13 +267,11 @@ export async function retrieve(input: RetrieveInput): Promise<Retrieval> {
     project.id,
     candidates.map((candidate) => ({ postId: candidate.post.id, sources: candidate.sources })),
   );
-  for (const entry of loop.covered) {
-    await markCovered(entry.row, entry.at);
-  }
   return {
     candidates,
     gaps: loop.gaps,
     outsideWindow: loop.outsideWindow,
     hydrated,
+    covered: loop.covered,
   };
 }

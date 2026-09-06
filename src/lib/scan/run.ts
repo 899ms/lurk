@@ -21,7 +21,7 @@ import {
 import { leadKey, openPostLeads, resolveLeads, writeLeads, type LeadRow } from "./leads";
 import { loadScanProject, type ScanProject } from "./project";
 import { retrieve } from "./retrieve";
-import { creditSources, type CandidateSource } from "./sources";
+import { creditSources, markCovered, type CandidateSource } from "./sources";
 import type { Judgement, ScorableItem } from "./judgement";
 import { judgeItems, readOrder, triageTitles } from "./score";
 
@@ -221,6 +221,9 @@ export async function runScan(projectId: string, jobId: string): Promise<ScanOut
   const toJudge = await unjudged(project, stored, full);
   const judgements = await judgeItems(projectId, project.productText, toJudge.map(postItem));
   await writeEvaluations(await evaluationsFor(project, toJudge, judgements));
+  for (const entry of retrieval.covered) {
+    await markCovered(entry.row, entry.at);
+  }
   const scored = judgements.map((judgement) => ({ judgement }));
   const fullById = new Map(toJudge.map((post) => [post.id, post]));
   const postLeads = qualified(scored).map((item) =>
