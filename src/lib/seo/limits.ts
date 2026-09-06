@@ -3,7 +3,8 @@ import { TIERS, type TierLimits } from "@/lib/tiers";
 
 /** What one tier may ask of Google, and how often. */
 export type SeoSettings = {
-  keywords: string[];
+  /** The problem phrasings this refresh will search, already cut to the tier. */
+  phrasings: string[];
   refreshDays: number;
   searchVolume: boolean;
 };
@@ -12,10 +13,10 @@ export type SeoSettings = {
  * A self-hosted instance has no limits at all, which `limitsFor` says with a
  * null; it then gets what a connected wallet gets, the same way scans do.
  */
-export function seoSettings(limits: TierLimits | null, keywords: string[]): SeoSettings {
+export function seoSettings(limits: TierLimits | null, phrasings: string[]): SeoSettings {
   const effective = limits ?? TIERS.connected;
   return {
-    keywords: capped(keywords, effective.seoKeywords),
+    phrasings: capped(phrasings, effective.seoKeywords),
     refreshDays: effective.seoRefreshDays,
     searchVolume: effective.seoSearchVolume,
   };

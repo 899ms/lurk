@@ -71,6 +71,13 @@
       "when": 1788722842816,
       "tag": "0009_serp_discovery_foundation",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1788724391073,
+      "tag": "0010_product_capabilities_exclusions",
+      "breakpoints": true
     }
   ]
 }

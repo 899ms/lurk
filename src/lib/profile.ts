@@ -165,6 +165,8 @@ export async function buildProfile(
       targetUsers: profile.targetUsers,
       geography: profile.serviceGeography || null,
       budgetFit: profile.budgetFit,
+      capabilities: profile.capabilities,
+      exclusions: profile.exclusions,
       destinations: profile.destinations,
       problemPhrasings: profile.problemPhrasings,
     })

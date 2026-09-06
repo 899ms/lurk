@@ -20,7 +20,7 @@ import {
   applyRelevance,
   loadEvidence,
   parseDestinations,
-  parsePhrasings,
+  parseTextList,
   UNLABELED,
 } from "./store";
 import { discoveryBudget, productBrief, publishFromEvidence } from "./run";
@@ -85,7 +85,7 @@ export async function runDiscoveryRefresh(
   const budget = discoveryBudget(limits);
   const maxAgeMs = budget.refreshDays * DAY_MS;
   const destinations = parseDestinations(project.destinations);
-  const problemPhrasings = parsePhrasings(project.problemPhrasings);
+  const problemPhrasings = parseTextList(project.problemPhrasings);
   const evidence = await loadEvidence(projectId);
   const used = askedQueries(
     evidence,
@@ -123,8 +123,8 @@ export async function runDiscoveryRefresh(
       targetUsers: project.targetUsers ?? "",
       serviceGeography: project.geography ?? "",
       budgetFit: project.budgetFit ?? "",
-      capabilities: [],
-      exclusions: [],
+      capabilities: parseTextList(project.capabilities),
+      exclusions: parseTextList(project.exclusions),
     }),
     candidates: fresh.map((thread) => ({
       id: thread.postId,

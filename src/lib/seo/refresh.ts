@@ -13,14 +13,14 @@ import { writeOpportunities, type OpportunityRow } from "./opportunities";
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export type SeoRefreshOutcome = {
-  keywords: number;
+  phrasings: number;
   threads: number;
   costUsd: number;
 };
 
 /**
  * Opens one ranking thread so the page can show its score, replies and age.
- * A thread Reddit will not hand back is skipped: the rest of the keyword is
+ * A thread Reddit will not hand back is skipped: the rest of the phrasing is
  * still worth showing.
  */
 async function readThread(
@@ -36,13 +36,13 @@ async function readThread(
   }
 }
 
-async function refreshKeyword(
+async function refreshPhrasing(
   project: ScanProject,
   ctx: FetchContext,
-  keyword: string,
+  phrasing: string,
   maxAgeMs: number,
 ): Promise<{ threads: number; costUsd: number }> {
-  const ranked = await fetchRankingThreads(ctx, keyword, maxAgeMs);
+  const ranked = await fetchRankingThreads(ctx, phrasing, maxAgeMs);
   let costUsd = ranked.costUsd;
   const rows: OpportunityRow[] = [];
   for (const result of ranked.value) {
@@ -61,17 +61,19 @@ async function refreshKeyword(
       ),
     });
   }
-  await writeOpportunities(project.id, keyword, rows);
+  await writeOpportunities(project.id, phrasing, rows);
   return { threads: rows.length, costUsd };
 }
 
 /**
- * One Reddit SEO refresh: for every keyword the tier allows, which Reddit
- * threads Google ranks, what each thread looks like now, and whether a
- * competitor is named in it. Monthly volume is bought once for the whole list
- * and only for a connected wallet, because that endpoint costs a hundred times
- * a Reddit call. A project with keywords books its next refresh on the way
- * out, at its tier's refresh interval.
+ * One Reddit SEO refresh: for every problem phrasing the tier allows, which
+ * Reddit threads Google ranks, what each thread looks like now, and whether a
+ * competitor is named in it. It searches the way buyers say the problem, not
+ * the plan's Reddit queries, because those are Boolean expressions Google
+ * cannot read. Monthly volume is bought once for the whole list and only for a
+ * connected wallet, because that endpoint costs a hundred times a Reddit call.
+ * A project with phrasings books its next refresh on the way out, at its
+ * tier's refresh interval.
  */
 export async function runSeoRefresh(
   projectId: string,
@@ -82,10 +84,10 @@ export async function runSeoRefresh(
     throw new Error("This project no longer exists");
   }
   const { limits } = await tierForUser(project.userId);
-  const settings = seoSettings(limits, project.keywords);
-  if (settings.keywords.length === 0) {
-    await writeProgress(jobId, "No keywords to look up yet");
-    return { keywords: 0, threads: 0, costUsd: 0 };
+  const settings = seoSettings(limits, project.phrasings);
+  if (settings.phrasings.length === 0) {
+    await writeProgress(jobId, "No problem phrasings to look up yet");
+    return { phrasings: 0, threads: 0, costUsd: 0 };
   }
   const funded = await clientForUser(project.userId);
   const maxAgeMs = settings.refreshDays * DAY_MS;
@@ -93,19 +95,22 @@ export async function runSeoRefresh(
 
   let threads = 0;
   let costUsd = 0;
-  for (const [index, keyword] of settings.keywords.entries()) {
-    await writeProgress(jobId, `Searching ${index + 1} of ${settings.keywords.length}: ${keyword}`);
-    const done = await refreshKeyword(project, ctx, keyword, maxAgeMs);
+  for (const [index, phrasing] of settings.phrasings.entries()) {
+    await writeProgress(
+      jobId,
+      `Searching ${index + 1} of ${settings.phrasings.length}: ${phrasing}`,
+    );
+    const done = await refreshPhrasing(project, ctx, phrasing, maxAgeMs);
     threads += done.threads;
     costUsd += done.costUsd;
   }
 
   if (settings.searchVolume) {
     await writeProgress(jobId, "Reading monthly search volume");
-    costUsd += await fetchKeywordVolumes(ctx, settings.keywords);
+    costUsd += await fetchKeywordVolumes(ctx, settings.phrasings);
   }
 
   await writeProgress(jobId, "Finished");
   await enqueueJob("seo_refresh", projectId, new Date(Date.now() + maxAgeMs));
-  return { keywords: settings.keywords.length, threads, costUsd };
+  return { phrasings: settings.phrasings.length, threads, costUsd };
 }

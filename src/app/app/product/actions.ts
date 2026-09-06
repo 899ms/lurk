@@ -12,7 +12,8 @@ import {
 } from "@/db/schema";
 import { scanNowAction } from "@/app/app/scan";
 import { requireLocalUser } from "@/lib/auth";
-import { parseDestinations, parsePhrasings } from "@/lib/discovery/store";
+import type { Destination } from "@/lib/discovery/queries";
+import { parseDestinations, parseTextList } from "@/lib/discovery/store";
 import { buildProfile } from "@/lib/profile";
 import { projectForUser } from "@/lib/projects";
 import { tierForUser } from "@/lib/tier";
@@ -20,8 +21,10 @@ import { tierForUser } from "@/lib/tier";
 export type ChipKind = "keyword" | "subreddit" | "competitor";
 /** What a person has decided about one row of the plan. */
 export type ChipState = "active" | "pinned" | "excluded";
-/** The two lists read off the product page itself, editable by hand. */
-export type ListKind = "destination" | "phrasing";
+/** The lists read off the product page itself, editable by hand. */
+export type ListKind = "destination" | "phrasing" | "capability" | "exclusion";
+/** Every one of those except places, all of which are plain lists of phrases. */
+type TextListKind = Exclude<ListKind, "destination">;
 export type ProfileState = { error: string | null; saved: boolean };
 export type ChipResult = { error: string | null };
 
@@ -307,22 +310,58 @@ export async function setChipStateAction(
   }
 }
 
-async function saveLists(
-  projectId: string,
-  destinations: { name: string; sourceText: string }[],
-  phrasings: string[],
-) {
+/** The lists a person edits by hand, as the project's jsonb columns hold them. */
+type ProductLists = {
+  destinations: Destination[];
+  phrasings: string[];
+  capabilities: string[];
+  exclusions: string[];
+};
+
+const TEXT_LIST: Record<TextListKind, "phrasings" | "capabilities" | "exclusions"> = {
+  phrasing: "phrasings",
+  capability: "capabilities",
+  exclusion: "exclusions",
+};
+
+/**
+ * What the product can and cannot do are facts the scorer judges against, so
+ * editing one bumps the profile version exactly as a competitor edit does. A
+ * place or a phrasing only changes what discovery asks next, and no verdict
+ * ever rested on it, so those are saved without invalidating anything.
+ */
+const JUDGED: ListKind[] = ["capability", "exclusion"];
+
+function productLists(project: typeof projects.$inferSelect): ProductLists {
+  return {
+    destinations: parseDestinations(project.destinations),
+    phrasings: parseTextList(project.problemPhrasings),
+    capabilities: parseTextList(project.capabilities),
+    exclusions: parseTextList(project.exclusions),
+  };
+}
+
+async function saveLists(projectId: string, kind: ListKind, lists: ProductLists) {
   await db()
     .update(projects)
-    .set({ destinations, problemPhrasings: phrasings })
+    .set({
+      destinations: lists.destinations,
+      problemPhrasings: lists.phrasings,
+      capabilities: lists.capabilities,
+      exclusions: lists.exclusions,
+    })
     .where(eq(projects.id, projectId));
+  if (JUDGED.includes(kind)) {
+    await bumpProfileVersion(projectId);
+  }
   revalidatePath("/app/product");
 }
 
 /**
- * Adds a place or a phrasing the page never said. Both feed the next round of
- * discovery queries, so this is how a person teaches the app a market or a way
- * of asking that their own page does not spell out.
+ * Adds a place, a phrasing, a capability or an exclusion the page never said.
+ * Places and phrasings feed the next round of discovery queries; capabilities
+ * and exclusions go to the scorer. This is how a person teaches the app what
+ * their own page does not spell out.
  */
 export async function addListItemAction(
   kind: ListKind,
@@ -335,16 +374,18 @@ export async function addListItemAction(
     if (!value) {
       return { error: "Type something first." };
     }
-    const destinations = parseDestinations(project.destinations);
-    const phrasings = parsePhrasings(project.problemPhrasings);
+    const lists = productLists(project);
     if (kind === "destination") {
-      if (!destinations.some((place) => place.name === value)) {
-        destinations.push({ name: value, sourceText: "Added by you" });
+      if (!lists.destinations.some((place) => place.name === value)) {
+        lists.destinations.push({ name: value, sourceText: "Added by you" });
       }
-    } else if (!phrasings.includes(value)) {
-      phrasings.push(value);
+    } else {
+      const field = TEXT_LIST[kind];
+      if (!lists[field].includes(value)) {
+        lists[field] = [...lists[field], value];
+      }
     }
-    await saveLists(project.id, destinations, phrasings);
+    await saveLists(project.id, kind, lists);
     return { error: null };
   } catch (error) {
     return {
@@ -353,20 +394,21 @@ export async function addListItemAction(
   }
 }
 
-/** Removes one place or one phrasing from what discovery will ask about. */
+/** Removes one place, phrasing, capability or exclusion from the project. */
 export async function removeListItemAction(
   kind: ListKind,
   projectId: string,
   value: string,
 ) {
   const { project } = await ownedProject(projectId);
-  const destinations = parseDestinations(project.destinations).filter(
-    (place) => kind !== "destination" || place.name !== value,
-  );
-  const phrasings = parsePhrasings(project.problemPhrasings).filter(
-    (phrase) => kind !== "phrasing" || phrase !== value,
-  );
-  await saveLists(project.id, destinations, phrasings);
+  const lists = productLists(project);
+  if (kind === "destination") {
+    lists.destinations = lists.destinations.filter((place) => place.name !== value);
+  } else {
+    const field = TEXT_LIST[kind];
+    lists[field] = lists[field].filter((item) => item !== value);
+  }
+  await saveLists(project.id, kind, lists);
 }
 
 /** Reads the product page again and replaces the profile it produced. */

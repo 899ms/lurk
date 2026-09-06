@@ -68,6 +68,10 @@ export const projects = pgTable("projects", {
    * so a new plan must not throw away verdicts the old plan's candidates got.
    */
   discoveryVersion: integer("discovery_version").notNull().default(1),
+  /** What the product can actually do, one short phrase each. */
+  capabilities: jsonb("capabilities"),
+  /** What it cannot do, does not cover, or refuses, one short phrase each. */
+  exclusions: jsonb("exclusions"),
   /** Places this product serves, each with the page text it was read from. */
   destinations: jsonb("destinations"),
   /** How buyers say the problem, in their words, taken from the product page. */

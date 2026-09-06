@@ -34,7 +34,7 @@ function FilterPill({ icon, name, value, options, onSelect }: PillProps) {
   );
 }
 
-/** Narrow the rankings to one keyword, one community, or the ones a rival is in. */
+/** Narrow the rankings to one phrasing, one community, or the ones a rival is in. */
 export function SeoFilters({ facets }: SeoFiltersProps) {
   const router = useRouter();
   const params = useSearchParams();
@@ -58,7 +58,7 @@ export function SeoFilters({ facets }: SeoFiltersProps) {
         value={params.get("keyword") ?? ""}
         onSelect={select}
         options={[
-          { value: "", label: "All keywords" },
+          { value: "", label: "All phrasings" },
           ...facets.keywords.map((keyword) => ({ value: keyword, label: keyword })),
         ]}
       />

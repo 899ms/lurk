@@ -19,7 +19,7 @@ import {
 } from "@/app/app/product/actions";
 import { requireLocalUser } from "@/lib/auth";
 import { dedupeThreads } from "@/lib/discovery/rank";
-import { loadEvidence, parseDestinations, parsePhrasings } from "@/lib/discovery/store";
+import { loadEvidence, parseDestinations, parseTextList } from "@/lib/discovery/store";
 import { activeProject } from "@/lib/projects";
 import { DEFAULT_SCORE_THRESHOLD } from "@/lib/scan/constants";
 import { tierForUser } from "@/lib/tier";
@@ -127,7 +127,30 @@ export default async function ProductPage({ searchParams }: ProductPageProps) {
         placeholder="hotels that let 19 year olds check in"
         kind="phrasing"
         projectId={project.id}
-        items={parsePhrasings(project.problemPhrasings).map((phrase) => ({
+        items={parseTextList(project.problemPhrasings).map((phrase) => ({
+          value: phrase,
+          sourceText: null,
+        }))}
+      />
+
+      <ListEditor
+        title="What it can do"
+        hint="Read off your own page. The scorer judges a person's need against these."
+        placeholder="check in guests aged 18 and over"
+        kind="capability"
+        projectId={project.id}
+        items={parseTextList(project.capabilities).map((phrase) => ({
+          value: phrase,
+          sourceText: null,
+        }))}
+      />
+      <ListEditor
+        title="What it does not cover"
+        hint="What you cannot do or will not take. It keeps the wrong person out of the feed."
+        placeholder="anything outside the United States"
+        kind="exclusion"
+        projectId={project.id}
+        items={parseTextList(project.exclusions).map((phrase) => ({
           value: phrase,
           sourceText: null,
         }))}

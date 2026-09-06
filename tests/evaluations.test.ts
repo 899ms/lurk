@@ -134,6 +134,7 @@ describe("judging one comment once", () => {
     communities: [],
     keywords: [],
     subreddits: [],
+    phrasings: [],
     competitors: [],
     productText: "Product: Formcraft",
   };

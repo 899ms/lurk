@@ -103,8 +103,12 @@ export function parseDestinations(value: unknown): Destination[] {
     .filter((item) => item.name.trim().length > 0);
 }
 
-/** The problem phrasings a project holds, as the jsonb column returns them. */
-export function parsePhrasings(value: unknown): string[] {
+/**
+ * One of a project's jsonb string lists, as the column returns it: its problem
+ * phrasings, what it can do, or what it does not cover. Anything that is not a
+ * non-empty string is dropped, so a half-written column can never be read as one.
+ */
+export function parseTextList(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return [];
   }

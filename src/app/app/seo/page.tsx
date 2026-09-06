@@ -21,7 +21,7 @@ type SeoPageProps = {
 };
 
 const EMPTY_SENTENCE =
-  "A refresh asks Google which Reddit threads rank for each of your keywords, then opens every thread for its score, replies and age. At catalog prices the search is about $0.001 per keyword, and each thread it opens is about $0.001 more.";
+  "A refresh asks Google which Reddit threads rank for each way your buyers say the problem, then opens every thread for its score, replies and age. At catalog prices the search is about $0.001 per phrasing, and each thread it opens is about $0.001 more.";
 
 function toThread(row: SeoRow): RankingThread {
   return {
@@ -38,7 +38,7 @@ function toThread(row: SeoRow): RankingThread {
   };
 }
 
-function byKeyword(rows: SeoRow[]): Map<string, RankingThread[]> {
+function byPhrasing(rows: SeoRow[]): Map<string, RankingThread[]> {
   const grouped = new Map<string, RankingThread[]>();
   for (const row of rows) {
     const threads = grouped.get(row.keyword) ?? [];
@@ -56,7 +56,7 @@ export default async function SeoPage({ searchParams }: SeoPageProps) {
     return (
       <EmptyState
         title="Reddit SEO"
-        sentence="Create a project first, then a refresh can find the Reddit threads ranking for your keywords."
+        sentence="Create a project first, then a refresh can find the Reddit threads ranking for the way your buyers say the problem."
       />
     );
   }
@@ -70,9 +70,9 @@ export default async function SeoPage({ searchParams }: SeoPageProps) {
     seoFacets(project.id),
     lastRunJob("seo_refresh", project.id),
   ]);
-  const grouped = byKeyword(rows);
-  const keywords = [...grouped.keys()];
-  const volumes = await volumesFor(keywords);
+  const grouped = byPhrasing(rows);
+  const phrasings = [...grouped.keys()];
+  const volumes = await volumesFor(phrasings);
 
   return (
     <div className="flex flex-col gap-5">
@@ -90,16 +90,16 @@ export default async function SeoPage({ searchParams }: SeoPageProps) {
         </form>
       </div>
       <SeoFilters facets={facets} />
-      {keywords.length === 0 ? (
+      {phrasings.length === 0 ? (
         <EmptyState title="Nothing ranked yet" sentence={EMPTY_SENTENCE} />
       ) : (
         <div className="flex flex-col gap-6">
-          {keywords.map((keyword) => (
+          {phrasings.map((phrasing) => (
             <KeywordSection
-              key={keyword}
-              keyword={keyword}
-              monthlyVolume={volumes.get(normalizeQuery(keyword)) ?? null}
-              threads={grouped.get(keyword) ?? []}
+              key={phrasing}
+              keyword={phrasing}
+              monthlyVolume={volumes.get(normalizeQuery(phrasing)) ?? null}
+              threads={grouped.get(phrasing) ?? []}
             />
           ))}
         </div>
