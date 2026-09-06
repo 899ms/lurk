@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { eq } from "drizzle-orm";
 import { EmptyState } from "@/components/EmptyState";
-import { ChipEditor } from "@/components/product/ChipEditor";
+import { EvidenceThreads } from "@/components/product/EvidenceThreads";
+import { ListEditor } from "@/components/product/ListEditor";
+import { PlanEditor } from "@/components/product/PlanEditor";
 import { ProfileForm } from "@/components/product/ProfileForm";
 import { Button } from "@/components/ui/button";
 import { db } from "@/db";
@@ -16,6 +18,8 @@ import {
   scanAndOpenLeadsAction,
 } from "@/app/app/product/actions";
 import { requireLocalUser } from "@/lib/auth";
+import { dedupeThreads } from "@/lib/discovery/rank";
+import { loadEvidence, parseDestinations, parsePhrasings } from "@/lib/discovery/store";
 import { activeProject } from "@/lib/projects";
 import { DEFAULT_SCORE_THRESHOLD } from "@/lib/scan/constants";
 import { tierForUser } from "@/lib/tier";
@@ -61,6 +65,24 @@ export default async function ProductPage({ searchParams }: ProductPageProps) {
   const icons = Object.fromEntries(
     (await db().select().from(subredditRows)).map((row) => [row.name, row.iconUrl]),
   );
+  const evidence = await loadEvidence(project.id);
+  const threads = dedupeThreads(evidence)
+    .sort((left, right) => right.weight - left.weight || left.bestPosition - right.bestPosition)
+    .map((thread) => {
+      const row = evidence.find((item) => item.postId === thread.postId);
+      return {
+        postId: thread.postId,
+        canonicalUrl: row?.canonicalUrl ?? "",
+        subreddit: thread.subreddit,
+        title: thread.title,
+        relevance: row?.relevance ?? "unlabeled",
+      };
+    });
+  const planRow = (row: {
+    source: string;
+    state: string;
+    evidence: number;
+  }) => ({ source: row.source, state: row.state, evidence: row.evidence });
 
   return (
     <div className="flex max-w-3xl flex-col gap-6">
@@ -88,34 +110,59 @@ export default async function ProductPage({ searchParams }: ProductPageProps) {
         }}
       />
 
-      <ChipEditor
-        title="Keywords"
-        hint="Phrases we search Reddit for."
+      <ListEditor
+        title="Places you serve"
+        hint="Read off your own page. Discovery asks Google about each of these."
+        placeholder="Las Vegas"
+        kind="destination"
+        projectId={project.id}
+        items={parseDestinations(project.destinations).map((place) => ({
+          value: place.name,
+          sourceText: place.sourceText,
+        }))}
+      />
+      <ListEditor
+        title="How buyers say it"
+        hint="The problem in their words, which is what we search for."
+        placeholder="hotels that let 19 year olds check in"
+        kind="phrasing"
+        projectId={project.id}
+        items={parsePhrasings(project.problemPhrasings).map((phrase) => ({
+          value: phrase,
+          sourceText: null,
+        }))}
+      />
+
+      <PlanEditor
+        title="Searches"
+        hint="What we search Reddit for. Google evidence wrote these; pin one to keep it."
         placeholder="cold email deliverability"
         kind="keyword"
         projectId={project.id}
-        values={keywords.map((row) => row.keyword)}
+        rows={keywords.map((row) => ({ value: row.keyword, ...planRow(row) }))}
         limit={limits?.keywordsPerProject ?? null}
       />
-      <ChipEditor
-        title="Subreddits"
-        hint="Communities we read on every scan."
+      <PlanEditor
+        title="Communities"
+        hint="Where relevant threads were actually found. Waiting ones are next in line."
         placeholder="r/saas"
         kind="subreddit"
         projectId={project.id}
-        values={subs.map((row) => row.name)}
+        rows={subs.map((row) => ({ value: row.name, ...planRow(row) }))}
         limit={limits?.subredditsPerProject ?? null}
         icons={icons}
       />
-      <ChipEditor
+      <PlanEditor
         title="Competitors"
-        hint="Names worth catching when someone mentions them."
+        hint="Named in the evidence as doing the same job for the same person."
         placeholder="Acme"
         kind="competitor"
         projectId={project.id}
-        values={competitors.map((row) => row.name)}
+        rows={competitors.map((row) => ({ value: row.name, ...planRow(row) }))}
         limit={limits?.competitors ?? null}
       />
+
+      <EvidenceThreads threads={threads} />
 
       <div className="flex flex-wrap items-center gap-3">
         <form action={scanAndOpenLeadsAction}>

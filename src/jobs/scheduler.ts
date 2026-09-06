@@ -40,14 +40,16 @@ async function pump(workers: number): Promise<void> {
 }
 
 /**
- * Queues a scan for every project that has none waiting. A scan whose process
- * died left no successor behind, so without this a project stops being scanned
- * until somebody presses the button.
+ * Queues a scan and a discovery delta for every project that has none waiting.
+ * A job whose process died left no successor behind, so without this a project
+ * stops being scanned, and stops learning where its buyers ask, until somebody
+ * presses a button.
  */
 export async function seedProjectScans(): Promise<void> {
   const rows = await db().select({ id: projects.id }).from(projects);
   for (const row of rows) {
     await enqueueOnce("scan", new Date(), row.id);
+    await enqueueOnce("discovery_refresh", new Date(), row.id);
   }
 }
 

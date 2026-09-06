@@ -96,7 +96,7 @@ export function ProfileForm({ project }: ProfileFormProps) {
         />
       </Line>
       <div className="grid gap-4 md:grid-cols-2">
-        <Line label="Where they are">
+        <Line label="Where the product works">
           <input
             name="geography"
             defaultValue={project.geography}

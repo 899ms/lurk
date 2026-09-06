@@ -2,7 +2,9 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { jobs, projects } from "@/db/schema";
 import { CADENCE_MS } from "@/lib/alerts/select";
+import { runDiscoveryRefresh } from "@/lib/discovery/refresh";
 import { deleteExpiredPosts } from "@/lib/retention";
+import { discoveryBudget } from "@/lib/discovery/run";
 import { runScan } from "@/lib/scan/run";
 import { scanIntervalHours, tierForUser } from "@/lib/tier";
 import { runCompetitorsJob } from "./competitors";
@@ -25,6 +27,12 @@ export const JOB_HANDLERS: Record<string, JobHandler> = {
       throw new Error("A scan job needs a project");
     }
     await runScan(job.projectId, job.id);
+  },
+  discovery_refresh: async (job) => {
+    if (!job.projectId) {
+      throw new Error("A discovery refresh needs a project");
+    }
+    await runDiscoveryRefresh(job.projectId, job.id);
   },
   insights: runInsightsJob,
   competitor_scan: runCompetitorsJob,
@@ -50,6 +58,16 @@ async function scanIntervalHoursFor(projectId: string): Promise<number> {
   return scanIntervalHours(userId ? (await tierForUser(userId)).limits : null);
 }
 
+/** Days between this project's discovery deltas, which its tier decides. */
+async function discoveryRefreshDaysFor(projectId: string): Promise<number> {
+  const rows = await db()
+    .select({ userId: projects.userId })
+    .from(projects)
+    .where(eq(projects.id, projectId));
+  const userId = rows[0]?.userId;
+  return discoveryBudget(userId ? (await tierForUser(userId)).limits : null).refreshDays;
+}
+
 /**
  * When a recurring kind is due again, or null when the kind runs once on
  * request. This repo has no retry policy, so a failed job simply waits its own
@@ -61,6 +79,9 @@ export async function nextRunAt(job: Job): Promise<Date | null> {
   const now = Date.now();
   if (job.kind === "scan" && job.projectId) {
     return new Date(now + (await scanIntervalHoursFor(job.projectId)) * HOUR_MS);
+  }
+  if (job.kind === "discovery_refresh" && job.projectId) {
+    return new Date(now + (await discoveryRefreshDaysFor(job.projectId)) * DAY_MS);
   }
   if (job.kind === "retention") {
     return new Date(now + DAY_MS);

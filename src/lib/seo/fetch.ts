@@ -21,6 +21,9 @@ const GOOGLE_KIND: FetchKind = "serp";
 /** Every Google search this app makes asks for United States results. */
 export const SEO_GEO = "us";
 
+/** And asks for them in English, which is also Google's own default. */
+export const SEO_LANGUAGE = "en";
+
 /** What we actually send Google: the keyword, aimed at Reddit. */
 export function googleQuery(keyword: string): string {
   return `${keyword.trim()} reddit`;
@@ -56,16 +59,17 @@ function loadResults(runId: string): Promise<StoredResult[]> {
 }
 
 /**
- * The Reddit threads Google ranks for one keyword. Non-Reddit results are
- * dropped before they are stored, so the whole app only ever holds the links
- * it can open through reddit.post.
+ * The one Google search this app makes, wherever it is asked from. Every call
+ * asks for the same market - United States results in English, no city and no
+ * time restriction - so two callers asking the same question share one run and
+ * pay once. Non-Reddit results are dropped before they are stored, so the whole
+ * app only ever holds the links it can open through reddit.post.
  */
-export async function fetchRankingThreads(
+export async function fetchGoogleThreads(
   ctx: FetchContext,
-  keyword: string,
+  query: string,
   maxAgeMs: number,
 ): Promise<SharedResult<StoredResult[]>> {
-  const query = googleQuery(keyword);
   return fetchShared<StoredResult[]>({
     ctx,
     kind: GOOGLE_KIND,
@@ -73,12 +77,25 @@ export async function fetchRankingThreads(
     normalizedQuery: normalizeQuery(query),
     maxAgeMs,
     run: async () => {
-      const res = await ctx.funded.client.google.search({ query, gl: SEO_GEO });
+      const res = await ctx.funded.client.google.search({
+        query,
+        gl: SEO_GEO,
+        hl: SEO_LANGUAGE,
+      });
       return { data: res.output.found ? res.output.data : null, costUsd: res.costUsd };
     },
     store: storeResults,
     load: loadResults,
   });
+}
+
+/** The Reddit threads Google ranks for one of this project's SEO keywords. */
+export async function fetchRankingThreads(
+  ctx: FetchContext,
+  keyword: string,
+  maxAgeMs: number,
+): Promise<SharedResult<StoredResult[]>> {
+  return fetchGoogleThreads(ctx, googleQuery(keyword), maxAgeMs);
 }
 
 /**

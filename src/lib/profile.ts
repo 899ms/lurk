@@ -1,39 +1,42 @@
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import {
-  projectCompetitors,
-  projectKeywords,
-  projectSubreddits,
-  projects,
-  subreddits,
-} from "@/db/schema";
+import { projectSubreddits, projects, subreddits } from "@/db/schema";
+import { enqueueJob } from "@/jobs/enqueue";
 import { clientForUser } from "./anyapi";
+import { discoveryBudget, runDiscovery } from "./discovery/run";
 import { generateStructured } from "./llm";
 import { PROFILE_SYSTEM, PROMO_POLICY_SYSTEM } from "./prompts";
 import { normalizeQuery, recordUsage } from "./reddit/fetch";
 import { fetchSubredditDetails } from "./reddit/skus";
-import { capped, tierForUser } from "./tier";
+import { tierForUser } from "./tier";
 import { assertHouseDataUnderCap } from "./usage";
 
 /** How long a subreddit sidebar is reused before we buy it again. */
 const SUBREDDIT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
+/**
+ * What one product page can tell us. Communities, searches and competitors are
+ * absent on purpose: those are discovered from Google evidence, so a model
+ * that has heard of this company cannot hand the scan a community nobody has
+ * ever seen a relevant thread in.
+ */
 const profileSchema = z.object({
   name: z.string(),
   pain: z.string(),
   solution: z.string(),
   targetUsers: z.string(),
-  geography: z.string(),
+  capabilities: z.array(z.string()),
+  exclusions: z.array(z.string()),
+  serviceGeography: z.string(),
+  destinations: z.array(z.object({ name: z.string(), sourceText: z.string() })),
+  problemPhrasings: z.array(z.string()),
   budgetFit: z.string(),
-  competitors: z.array(z.string()),
-  subreddits: z.array(z.string()),
-  keywords: z.array(z.string()),
 });
 
 export type ProductProfile = z.infer<typeof profileSchema>;
 
-export type ProfileStep = "scrape" | "profile" | "subreddits" | "done";
+export type ProfileStep = "scrape" | "profile" | "discovery" | "subreddits" | "done";
 
 /**
  * Reads the product page. It buys no shared run, so it counts against the house
@@ -93,46 +96,47 @@ async function resolveSubreddit(
   return key;
 }
 
-async function replaceChildren(projectId: string, profile: ProductProfile, limits: {
-  keywords: number | null | undefined;
-  subredditNames: string[];
-  competitors: number | null | undefined;
-}) {
-  await db().delete(projectKeywords).where(eq(projectKeywords.projectId, projectId));
-  await db().delete(projectSubreddits).where(eq(projectSubreddits.projectId, projectId));
-  await db().delete(projectCompetitors).where(eq(projectCompetitors.projectId, projectId));
-  const keywords = capped(profile.keywords, limits.keywords);
-  const competitors = capped(profile.competitors, limits.competitors);
-  if (keywords.length > 0) {
-    await db()
-      .insert(projectKeywords)
-      .values(keywords.map((keyword) => ({ projectId, keyword })))
-      .onConflictDoNothing();
+/**
+ * Buys the sidebar and the self-promotion rule for every community the plan
+ * will actually read. Discovery has already proved each one carries relevant
+ * threads, so this spends only on communities that earned a slot.
+ */
+async function resolveActiveSubreddits(projectId: string, userId: string): Promise<string[]> {
+  const rows = await db()
+    .select()
+    .from(projectSubreddits)
+    .where(
+      and(
+        eq(projectSubreddits.projectId, projectId),
+        inArray(projectSubreddits.state, ["active", "pinned"]),
+      ),
+    );
+  const resolved: string[] = [];
+  for (const row of rows) {
+    const key = await resolveSubreddit(projectId, userId, row.name);
+    if (key) {
+      resolved.push(key);
+    }
   }
-  if (limits.subredditNames.length > 0) {
-    await db()
-      .insert(projectSubreddits)
-      .values(limits.subredditNames.map((name) => ({ projectId, name })))
-      .onConflictDoNothing();
-  }
-  if (competitors.length > 0) {
-    await db()
-      .insert(projectCompetitors)
-      .values(competitors.map((name) => ({ projectId, name })))
-      .onConflictDoNothing();
-  }
+  return resolved;
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+export type BuiltProfile = ProductProfile & { subreddits: string[] };
+
 /**
- * Reads the product's own page, asks the model who buys it and where they post,
- * then resolves every named subreddit once. Replaces whatever the project held.
+ * Reads the product's own page for what the product is, then learns from
+ * Google where and how its buyers ask, and publishes the plan the scan spends
+ * on. The page decides the facts; the evidence decides the plan; the first
+ * weekly delta is booked before this returns.
  */
 export async function buildProfile(
   projectId: string,
   userId: string,
   url: string,
   onStep?: (step: ProfileStep) => Promise<void> | void,
-): Promise<ProductProfile> {
+): Promise<BuiltProfile> {
   const { limits } = await tierForUser(userId);
   await onStep?.("scrape");
   const page = await scrapeProduct(projectId, userId, url);
@@ -159,26 +163,40 @@ export async function buildProfile(
       pain: profile.pain,
       solution: profile.solution,
       targetUsers: profile.targetUsers,
-      geography: profile.geography || null,
+      geography: profile.serviceGeography || null,
       budgetFit: profile.budgetFit,
+      destinations: profile.destinations,
+      problemPhrasings: profile.problemPhrasings,
     })
     .where(eq(projects.id, projectId));
 
-  await onStep?.("subreddits");
-  const wanted = capped(profile.subreddits, limits?.subredditsPerProject);
-  const resolved: string[] = [];
-  for (const name of wanted) {
-    const key = await resolveSubreddit(projectId, userId, name);
-    if (key) {
-      resolved.push(key);
-    }
-  }
-
-  await replaceChildren(projectId, profile, {
-    keywords: limits?.keywordsPerProject,
-    competitors: limits?.competitors,
-    subredditNames: resolved,
+  await onStep?.("discovery");
+  await runDiscovery({
+    projectId,
+    userId,
+    facts: {
+      name: profile.name,
+      pain: profile.pain,
+      solution: profile.solution,
+      targetUsers: profile.targetUsers,
+      serviceGeography: profile.serviceGeography,
+      budgetFit: profile.budgetFit,
+      capabilities: profile.capabilities,
+      exclusions: profile.exclusions,
+    },
+    destinations: profile.destinations,
+    problemPhrasings: profile.problemPhrasings,
+    limits,
   });
+
+  await onStep?.("subreddits");
+  const resolved = await resolveActiveSubreddits(projectId, userId);
+
+  await enqueueJob(
+    "discovery_refresh",
+    projectId,
+    new Date(Date.now() + discoveryBudget(limits).refreshDays * DAY_MS),
+  );
   await onStep?.("done");
   return { ...profile, subreddits: resolved };
 }

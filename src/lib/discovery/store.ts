@@ -1,0 +1,112 @@
+import { eq, inArray, and } from "drizzle-orm";
+import { db } from "@/db";
+import { discoveryEvidence } from "@/db/schema";
+import type { Relevance } from "./label";
+import type { Destination } from "./queries";
+
+/** One Google result about one thread, before anything has judged it. */
+export type Observation = {
+  postId: string;
+  canonicalUrl: string;
+  subreddit: string;
+  query: string;
+  family: string | null;
+  destination: string | null;
+  position: number | null;
+  title: string | null;
+  snippet: string | null;
+};
+
+export type EvidenceRow = typeof discoveryEvidence.$inferSelect;
+
+/** What a thread is worth until the model has read it. */
+export const UNLABELED: Relevance = "unlabeled";
+
+/**
+ * Writes what each query saw. One thread returned by four queries is one
+ * thread and four rows: the plan is ranked on unique threads, but which query
+ * found it is the only thing that can tell a working query from a dead one.
+ * A row already written stands, so re-running a query costs no evidence.
+ */
+export async function writeObservations(
+  projectId: string,
+  observations: Observation[],
+): Promise<void> {
+  if (observations.length === 0) {
+    return;
+  }
+  await db()
+    .insert(discoveryEvidence)
+    .values(
+      observations.map((item) => ({
+        projectId,
+        postId: item.postId,
+        canonicalUrl: item.canonicalUrl,
+        subreddit: item.subreddit,
+        query: item.query,
+        family: item.family,
+        destination: item.destination,
+        position: item.position,
+        title: item.title,
+        snippet: item.snippet,
+        relevance: UNLABELED,
+      })),
+    )
+    .onConflictDoNothing();
+}
+
+/**
+ * Files the model's verdict on a thread against every row that saw it, and the
+ * place it named where no query supplied one.
+ */
+export async function applyRelevance(
+  projectId: string,
+  postId: string,
+  relevance: Relevance,
+  destination: string | null,
+): Promise<void> {
+  await db()
+    .update(discoveryEvidence)
+    .set(destination ? { relevance, destination } : { relevance })
+    .where(and(eq(discoveryEvidence.projectId, projectId), eq(discoveryEvidence.postId, postId)));
+}
+
+/** Every observation this project has collected, newest plan included. */
+export function loadEvidence(projectId: string): Promise<EvidenceRow[]> {
+  return db().select().from(discoveryEvidence).where(eq(discoveryEvidence.projectId, projectId));
+}
+
+/** The rows of one set of threads, used to merge a delta into what we hold. */
+export function loadEvidenceForPosts(
+  projectId: string,
+  postIds: string[],
+): Promise<EvidenceRow[]> {
+  if (postIds.length === 0) {
+    return Promise.resolve([]);
+  }
+  return db()
+    .select()
+    .from(discoveryEvidence)
+    .where(
+      and(eq(discoveryEvidence.projectId, projectId), inArray(discoveryEvidence.postId, postIds)),
+    );
+}
+
+/** The destination seeds a project holds, as the jsonb column returns them. */
+export function parseDestinations(value: unknown): Destination[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .filter((item): item is Destination => typeof (item as Destination)?.name === "string")
+    .map((item) => ({ name: item.name, sourceText: String(item.sourceText ?? "") }))
+    .filter((item) => item.name.trim().length > 0);
+}
+
+/** The problem phrasings a project holds, as the jsonb column returns them. */
+export function parsePhrasings(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+}

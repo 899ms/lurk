@@ -12,11 +12,16 @@ import {
 } from "@/db/schema";
 import { scanNowAction } from "@/app/app/scan";
 import { requireLocalUser } from "@/lib/auth";
+import { parseDestinations, parsePhrasings } from "@/lib/discovery/store";
 import { buildProfile } from "@/lib/profile";
 import { projectForUser } from "@/lib/projects";
 import { tierForUser } from "@/lib/tier";
 
 export type ChipKind = "keyword" | "subreddit" | "competitor";
+/** What a person has decided about one row of the plan. */
+export type ChipState = "active" | "pinned" | "excluded";
+/** The two lists read off the product page itself, editable by hand. */
+export type ListKind = "destination" | "phrasing";
 export type ProfileState = { error: string | null; saved: boolean };
 export type ChipResult = { error: string | null };
 
@@ -151,24 +156,29 @@ const NOUNS: Record<ChipKind, string> = {
   competitor: "competitors",
 };
 
+/**
+ * A row a person typed is theirs: it is marked `user`, which is what makes the
+ * next discovery rebuild leave it exactly where it is.
+ */
 async function insertChip(kind: ChipKind, projectId: string, value: string) {
+  const owned = { projectId, source: "user", state: "active" };
   if (kind === "keyword") {
     await db()
       .insert(projectKeywords)
-      .values({ projectId, keyword: value })
+      .values({ ...owned, keyword: value })
       .onConflictDoNothing();
     return;
   }
   if (kind === "subreddit") {
     await db()
       .insert(projectSubreddits)
-      .values({ projectId, name: value })
+      .values({ ...owned, name: value })
       .onConflictDoNothing();
     return;
   }
   await db()
     .insert(projectCompetitors)
-    .values({ projectId, name: value })
+    .values({ ...owned, name: value })
     .onConflictDoNothing();
 }
 
@@ -241,6 +251,122 @@ export async function removeChipAction(
     await bumpProfileVersion(project.id);
   }
   revalidatePath("/app/product");
+}
+
+/**
+ * Pins, excludes or restores one row of the plan. A pinned row is retrieved
+ * and survives every rebuild; an excluded row is never retrieved and is not
+ * offered again. Both outlive discovery, which is the point of them.
+ */
+export async function setChipStateAction(
+  kind: ChipKind,
+  projectId: string,
+  value: string,
+  state: ChipState,
+): Promise<ChipResult> {
+  try {
+    const { project } = await ownedProject(projectId);
+    if (kind === "keyword") {
+      await db()
+        .update(projectKeywords)
+        .set({ state })
+        .where(
+          and(
+            eq(projectKeywords.projectId, project.id),
+            eq(projectKeywords.keyword, value),
+          ),
+        );
+    } else if (kind === "subreddit") {
+      await db()
+        .update(projectSubreddits)
+        .set({ state })
+        .where(
+          and(
+            eq(projectSubreddits.projectId, project.id),
+            eq(projectSubreddits.name, value),
+          ),
+        );
+    } else {
+      await db()
+        .update(projectCompetitors)
+        .set({ state })
+        .where(
+          and(
+            eq(projectCompetitors.projectId, project.id),
+            eq(projectCompetitors.name, value),
+          ),
+        );
+      await bumpProfileVersion(project.id);
+    }
+    revalidatePath("/app/product");
+    return { error: null };
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "That could not be changed.",
+    };
+  }
+}
+
+async function saveLists(
+  projectId: string,
+  destinations: { name: string; sourceText: string }[],
+  phrasings: string[],
+) {
+  await db()
+    .update(projects)
+    .set({ destinations, problemPhrasings: phrasings })
+    .where(eq(projects.id, projectId));
+  revalidatePath("/app/product");
+}
+
+/**
+ * Adds a place or a phrasing the page never said. Both feed the next round of
+ * discovery queries, so this is how a person teaches the app a market or a way
+ * of asking that their own page does not spell out.
+ */
+export async function addListItemAction(
+  kind: ListKind,
+  projectId: string,
+  raw: string,
+): Promise<ChipResult> {
+  try {
+    const { project } = await ownedProject(projectId);
+    const value = raw.trim();
+    if (!value) {
+      return { error: "Type something first." };
+    }
+    const destinations = parseDestinations(project.destinations);
+    const phrasings = parsePhrasings(project.problemPhrasings);
+    if (kind === "destination") {
+      if (!destinations.some((place) => place.name === value)) {
+        destinations.push({ name: value, sourceText: "Added by you" });
+      }
+    } else if (!phrasings.includes(value)) {
+      phrasings.push(value);
+    }
+    await saveLists(project.id, destinations, phrasings);
+    return { error: null };
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "That could not be added.",
+    };
+  }
+}
+
+/** Removes one place or one phrasing from what discovery will ask about. */
+export async function removeListItemAction(
+  kind: ListKind,
+  projectId: string,
+  value: string,
+) {
+  const { project } = await ownedProject(projectId);
+  const destinations = parseDestinations(project.destinations).filter(
+    (place) => kind !== "destination" || place.name !== value,
+  );
+  const phrasings = parsePhrasings(project.problemPhrasings).filter(
+    (phrase) => kind !== "phrasing" || phrase !== value,
+  );
+  await saveLists(project.id, destinations, phrasings);
 }
 
 /** Reads the product page again and replaces the profile it produced. */

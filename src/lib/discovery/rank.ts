@@ -1,0 +1,343 @@
+import type { EntityRole, Relevance, ThreadLabel } from "./label";
+import type { Coverage } from "./queries";
+import { collapseDestinations, isNumberWord, meaningWords, words } from "./phrases";
+
+/**
+ * Turning Google evidence into a plan: which communities are worth reading,
+ * which phrases are worth searching for, and which named products are really
+ * substitutes. Every function here is pure, so the arithmetic that decides a
+ * project's whole retrieval plan can be argued with in a test.
+ */
+
+/** What one relevant thread is worth against one that only might be. */
+export const RELEVANCE_WEIGHT: Record<Relevance, number> = {
+  relevant: 1,
+  plausible: 0.5,
+  irrelevant: 0,
+  unlabeled: 0,
+};
+
+/** One observation, as either the database or a fixture supplies it. */
+export type EvidenceLike = {
+  postId: string;
+  subreddit: string;
+  query: string;
+  family: string | null;
+  destination: string | null;
+  position: number | null;
+  title: string | null;
+  snippet: string | null;
+  relevance: string;
+};
+
+/** One thread, however many queries returned it. */
+export type ThreadEvidence = {
+  postId: string;
+  subreddit: string;
+  title: string;
+  snippet: string;
+  weight: number;
+  bestPosition: number;
+  families: string[];
+  destinations: string[];
+};
+
+function weightOf(relevance: string): number {
+  return RELEVANCE_WEIGHT[relevance as Relevance] ?? 0;
+}
+
+function distinct(values: (string | null)[]): string[] {
+  return [...new Set(values.filter((value): value is string => Boolean(value)))];
+}
+
+/** The unique threads behind a set of observations, best rank kept. */
+export function dedupeThreads(rows: EvidenceLike[]): ThreadEvidence[] {
+  const byPost = new Map<string, EvidenceLike[]>();
+  for (const row of rows) {
+    byPost.set(row.postId, [...(byPost.get(row.postId) ?? []), row]);
+  }
+  return [...byPost.entries()].map(([postId, group]) => ({
+    postId,
+    subreddit: group[0].subreddit.toLowerCase(),
+    title: group[0].title ?? "",
+    snippet: group[0].snippet ?? "",
+    weight: Math.max(...group.map((row) => weightOf(row.relevance))),
+    bestPosition: Math.min(...group.map((row) => row.position ?? Number.MAX_SAFE_INTEGER)),
+    families: distinct(group.map((row) => row.family)),
+    destinations: distinct(group.map((row) => row.destination)),
+  }));
+}
+
+/** True when this query asked about one of the places the product page named. */
+export function isDestinationQuery(query: string, destinations: string[]): boolean {
+  const asked = words(query).join(" ");
+  return destinations.some((name) => {
+    const place = words(name).join(" ");
+    return place.length > 0 && asked.includes(place);
+  });
+}
+
+export type CommunityRank = {
+  name: string;
+  /** Unique relevant threads, a plausible one counting half. */
+  weighted: number;
+  /** How many different problem families this community answered. */
+  families: number;
+  /** Relevant share of what it produced, smoothed so one lucky hit cannot win. */
+  fraction: number;
+  bestPosition: number;
+  threads: number;
+};
+
+function statsFor(rows: EvidenceLike[]): CommunityRank[] {
+  const threads = dedupeThreads(rows);
+  const byCommunity = new Map<string, ThreadEvidence[]>();
+  for (const thread of threads) {
+    byCommunity.set(thread.subreddit, [...(byCommunity.get(thread.subreddit) ?? []), thread]);
+  }
+  return [...byCommunity.entries()].map(([name, group]) => {
+    const weighted = group.reduce((total, thread) => total + thread.weight, 0);
+    return {
+      name,
+      weighted,
+      families: distinct(group.filter((thread) => thread.weight > 0).flatMap((t) => t.families))
+        .length,
+      fraction: (weighted + 1) / (group.length + 2),
+      bestPosition: Math.min(...group.map((thread) => thread.bestPosition)),
+      threads: group.length,
+    };
+  });
+}
+
+/** Best community first: most relevant evidence, then breadth, then rank. */
+export function compareCommunities(left: CommunityRank, right: CommunityRank): number {
+  return (
+    right.weighted - left.weighted ||
+    right.families - left.families ||
+    right.fraction - left.fraction ||
+    left.bestPosition - right.bestPosition ||
+    left.name.localeCompare(right.name)
+  );
+}
+
+/**
+ * The community order for the plan. The two kinds of query are ranked apart
+ * and then interleaved, because a product selling in twenty cities returns far
+ * more city threads than problem threads: combined in one pile, the community
+ * where the problem is actually discussed would never reach the top.
+ */
+export function rankCommunities(rows: EvidenceLike[], destinations: string[]): CommunityRank[] {
+  const broad = statsFor(rows.filter((row) => !isDestinationQuery(row.query, destinations)))
+    .sort(compareCommunities);
+  const placed = statsFor(rows.filter((row) => isDestinationQuery(row.query, destinations)))
+    .sort(compareCommunities);
+  const combined = new Map(statsFor(rows).map((item) => [item.name, item]));
+  const order: string[] = [];
+  for (let index = 0; index < Math.max(broad.length, placed.length); index += 1) {
+    for (const side of [broad[index], placed[index]]) {
+      if (side && !order.includes(side.name)) {
+        order.push(side.name);
+      }
+    }
+  }
+  return order.map((name) => combined.get(name)).filter((item): item is CommunityRank => Boolean(item));
+}
+
+/** One side's communities on their own, best first. */
+export function rankSide(rows: EvidenceLike[]): CommunityRank[] {
+  return statsFor(rows).sort(compareCommunities);
+}
+
+/**
+ * How much relevant evidence each family and each place has produced, which is
+ * what decides whether expansion is still worth buying.
+ */
+export function coverageFrom(rows: EvidenceLike[]): Coverage {
+  const coverage: Coverage = { families: {}, destinations: {} };
+  for (const thread of dedupeThreads(rows)) {
+    if (thread.weight <= 0) {
+      continue;
+    }
+    for (const family of thread.families) {
+      coverage.families[family] = (coverage.families[family] ?? 0) + 1;
+    }
+    for (const place of thread.destinations) {
+      coverage.destinations[place] = (coverage.destinations[place] ?? 0) + 1;
+    }
+  }
+  return coverage;
+}
+
+export type FamilyRank = {
+  family: string;
+  weighted: number;
+  /** The buyer's own words, with the city taken out so one demand is one family. */
+  phrases: string[];
+};
+
+/** The problem families the evidence supports, strongest first. */
+export function rankFamilies(rows: EvidenceLike[], destinations: string[]): FamilyRank[] {
+  const byFamily = new Map<string, EvidenceLike[]>();
+  for (const row of rows) {
+    if (!row.family) {
+      continue;
+    }
+    byFamily.set(row.family, [...(byFamily.get(row.family) ?? []), row]);
+  }
+  return [...byFamily.entries()]
+    .map(([family, group]) => {
+      const threads = dedupeThreads(group);
+      const evidence = threads
+        .filter((thread) => thread.weight > 0)
+        .sort((left, right) => right.weight - left.weight || left.bestPosition - right.bestPosition);
+      return {
+        family,
+        weighted: evidence.reduce((total, thread) => total + thread.weight, 0),
+        phrases: distinct(
+          evidence.map((thread) => collapseDestinations(thread.title, destinations)),
+        ),
+      };
+    })
+    .sort((left, right) => right.weighted - left.weighted || left.family.localeCompare(right.family));
+}
+
+const NEGATIONS = new Set(["no", "non", "not", "without", "cannot", "cant", "wont"]);
+
+/** A constraint said in more than one word, kept whole so Reddit matches it. */
+function multiWordConstraints(tokens: string[]): string[] {
+  const found: string[] = [];
+  for (let index = 0; index < tokens.length - 1; index += 1) {
+    const pair = `${tokens[index]} ${tokens[index + 1]}`;
+    if (
+      (["under", "over", "below", "above"].includes(tokens[index]) &&
+        isNumberWord(tokens[index + 1])) ||
+      pair === "check in"
+    ) {
+      found.push(pair);
+    }
+  }
+  return found;
+}
+
+/** Singular and plural are one term; the query asks for both spellings. */
+function stemOf(word: string): string {
+  return word.replace(/(ies|es|s)$/, (ending) => (ending === "ies" ? "y" : ""));
+}
+
+function countByPhrase(perPhrase: string[][]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const terms of perPhrase) {
+    for (const term of new Set(terms)) {
+      counts.set(term, (counts.get(term) ?? 0) + 1);
+    }
+  }
+  return counts;
+}
+
+function orClause(terms: string[]): string {
+  return `(${terms.join(" OR ")})`;
+}
+
+/**
+ * One problem family's evidence phrases as a Reddit search. The subject the
+ * family keeps repeating becomes one clause with its singular and plural, and
+ * every constraint the buyers stated - an age, a limit, a refusal - becomes a
+ * second clause, so the search asks for the demand and not merely the topic.
+ */
+export function compileBooleanQuery(phrases: string[]): string {
+  const subjectsPerPhrase: string[][] = [];
+  const constraintsPerPhrase: string[][] = [];
+  for (const phrase of phrases) {
+    const all = words(phrase);
+    const multi = multiWordConstraints(all);
+    const consumed = new Set(multi.flatMap((pair) => pair.split(" ")));
+    const constraints = [
+      ...multi.map((pair) => `"${pair}"`),
+      ...all.filter(
+        (word) => !consumed.has(word) && (isNumberWord(word) || NEGATIONS.has(word)),
+      ),
+    ];
+    constraintsPerPhrase.push(constraints);
+    subjectsPerPhrase.push(
+      meaningWords(phrase).filter(
+        (word) => !consumed.has(word) && !isNumberWord(word) && !NEGATIONS.has(word),
+      ),
+    );
+  }
+
+  const stems = new Map<string, Set<string>>();
+  for (const subjects of subjectsPerPhrase) {
+    for (const word of subjects) {
+      const stem = stemOf(word);
+      stems.set(stem, (stems.get(stem) ?? new Set()).add(word));
+    }
+  }
+  const stemCounts = countByPhrase(subjectsPerPhrase.map((list) => list.map(stemOf)));
+  const bestStem = [...stems.keys()].sort(
+    (left, right) => (stemCounts.get(right) ?? 0) - (stemCounts.get(left) ?? 0) || left.localeCompare(right),
+  )[0];
+
+  const clauses: string[] = [];
+  if (bestStem) {
+    clauses.push(orClause([...(stems.get(bestStem) ?? [])].sort()));
+  }
+  const constraints = [...countByPhrase(constraintsPerPhrase).keys()];
+  const numbers = constraints.filter(isNumberWord).sort((left, right) => Number(left) - Number(right));
+  const rest = constraints.filter((term) => !isNumberWord(term)).sort();
+  if (numbers.length + rest.length > 0) {
+    clauses.push(orClause([...numbers, ...rest]));
+  }
+  return clauses.join(" AND ");
+}
+
+/** The same search asked inside one community. */
+export function scopedBooleanQuery(query: string, subreddit: string): string {
+  return `subreddit:${subreddit} AND ${query}`;
+}
+
+export type CompetitorRank = { name: string; role: EntityRole; evidence: number };
+
+/**
+ * Only a direct substitute becomes a competitor. A booking alternative, a
+ * supplier and a forum are all named in the same snippets, and calling any of
+ * them a competitor is how a project ends up watching its own supplier.
+ */
+export function competitorsFrom(labels: ThreadLabel[]): CompetitorRank[] {
+  const counts = new Map<string, number>();
+  for (const label of labels) {
+    for (const entity of label.entities) {
+      if (entity.role !== "direct_substitute") {
+        continue;
+      }
+      const name = entity.name.trim();
+      if (name) {
+        counts.set(name, (counts.get(name) ?? 0) + 1);
+      }
+    }
+  }
+  return [...counts.entries()]
+    .map(([name, evidence]) => ({ name, role: "direct_substitute" as EntityRole, evidence }))
+    .sort((left, right) => right.evidence - left.evidence || left.name.localeCompare(right.name));
+}
+
+/**
+ * A weekly delta labels only its own threads, so what it found is added to the
+ * competitors already standing rather than replacing them.
+ */
+export function mergeCompetitors(
+  existing: CompetitorRank[],
+  found: CompetitorRank[],
+): CompetitorRank[] {
+  const merged = new Map<string, CompetitorRank>();
+  for (const item of [...existing, ...found]) {
+    const current = merged.get(item.name);
+    merged.set(item.name, {
+      name: item.name,
+      role: item.role,
+      evidence: (current?.evidence ?? 0) + item.evidence,
+    });
+  }
+  return [...merged.values()].sort(
+    (left, right) => right.evidence - left.evidence || left.name.localeCompare(right.name),
+  );
+}

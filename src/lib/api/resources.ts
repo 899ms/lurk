@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import {
   leads,
@@ -75,11 +75,38 @@ export type ApiProjectDetail = ApiProject & {
   competitors: string[];
 };
 
+/** What the plan is actually retrieving: a candidate is not yet being read. */
+const RETRIEVED_STATES = ["active", "pinned"];
+
 export async function getApiProject(project: Project): Promise<ApiProjectDetail> {
   const [keywords, subreddits, competitors, newLeads] = await Promise.all([
-    db().select().from(projectKeywords).where(eq(projectKeywords.projectId, project.id)),
-    db().select().from(projectSubreddits).where(eq(projectSubreddits.projectId, project.id)),
-    db().select().from(projectCompetitors).where(eq(projectCompetitors.projectId, project.id)),
+    db()
+      .select()
+      .from(projectKeywords)
+      .where(
+        and(
+          eq(projectKeywords.projectId, project.id),
+          inArray(projectKeywords.state, RETRIEVED_STATES),
+        ),
+      ),
+    db()
+      .select()
+      .from(projectSubreddits)
+      .where(
+        and(
+          eq(projectSubreddits.projectId, project.id),
+          inArray(projectSubreddits.state, RETRIEVED_STATES),
+        ),
+      ),
+    db()
+      .select()
+      .from(projectCompetitors)
+      .where(
+        and(
+          eq(projectCompetitors.projectId, project.id),
+          inArray(projectCompetitors.state, RETRIEVED_STATES),
+        ),
+      ),
     db()
       .select({ total: count() })
       .from(leads)
