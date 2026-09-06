@@ -111,3 +111,28 @@ describe("scoring a recommendation", () => {
     expect(SCORER_SYSTEM).toContain("recommending or defending a product they are not themselves");
   });
 });
+
+/**
+ * Measured on three real products (.context/reddit-leads-proof/scorer-pass.md):
+ * of 12 posts that explicitly asked for a tool in the product's category, only 7
+ * cleared the default threshold of 60. The scorer read "how close to spending
+ * money" literally, so "what free budgeting app do you use" scored intent 3 and
+ * the lead was thrown away. These two rules moved all 12 above the threshold.
+ */
+describe("the intent rubric", () => {
+  it("scores an explicit ask for a tool at the top of the scale", () => {
+    expect(SCORER_SYSTEM).toContain(
+      "Score 8-10 when they are\n  asking for a tool, an alternative or a recommendation in this category",
+    );
+  });
+
+  it("does not let wanting a free one count as low intent", () => {
+    expect(SCORER_SYSTEM).toContain("Wanting a free or cheap one is a budget\n  fact about them");
+  });
+
+  it("judges fit on the person, not on how exactly the product matches the ask", () => {
+    expect(SCORER_SYSTEM).toContain(
+      "not whether the product covers every detail of the thing they asked for",
+    );
+  });
+});
