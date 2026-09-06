@@ -122,6 +122,17 @@ PLAN
 
 # --------------------------------------------------------------- resources ---
 
+say "Resource providers"
+# A Container Apps environment writes its logs to a Log Analytics workspace, so
+# the subscription needs that provider before the environment can be created.
+for namespace in Microsoft.App Microsoft.OperationalInsights Microsoft.ContainerRegistry \
+                 Microsoft.DBforPostgreSQL Microsoft.ManagedIdentity; do
+  state="$(capture az provider show -n "$namespace" --query registrationState -o tsv)"
+  if [ "$state" != "Registered" ]; then
+    run az provider register -n "$namespace" --wait -o none
+  fi
+done
+
 say "Resource group"
 if ! exists az group show -n "$RESOURCE_GROUP"; then
   run az group create -n "$RESOURCE_GROUP" -l "$LOCATION" -o none
