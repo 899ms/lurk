@@ -1,4 +1,6 @@
 "use client";
+import { motion, useReducedMotion } from "motion/react";
+import { WalletConsent } from "./WalletConsent";
 import { useState } from "react";
 import { limitsFor, type TierName } from "@/lib/tiers";
 import { BrandImage } from "./BrandImage";
@@ -14,6 +16,7 @@ const count = (value: number | null | undefined) =>
   value == null ? "No app limit" : value.toLocaleString("en-US");
 
 export function MarketingCostTable() {
+  const reduced = useReducedMotion();
   const [choice, setChoice] = useState<Choice>("free");
   const limits = limitsFor(
     choice === "self-host" ? "free" : (choice as TierName),
@@ -44,12 +47,17 @@ export function MarketingCostTable() {
           The <span>data</span> behind a lead.
         </h2>
         <p>
-          AnyAPI bills each request in dollars. These are measured per-call prices, not a
-          subscription or a claim about your total spend.{" "}
+          AnyAPI bills each request in dollars. These are measured per-call
+          prices, not a subscription or a claim about your total spend.{" "}
           <a href="https://getanyapi.com">Explore AnyAPI</a>
         </p>
       </header>
-      <div className="price-bars" role="table" aria-label="Measured AnyAPI request prices">
+      <div
+        data-motion="costs"
+        className="price-bars"
+        role="table"
+        aria-label="Measured AnyAPI request prices"
+      >
         {MOCK_USAGE_ROWS.map((row) => (
           <div role="row" className="price-bar-row" key={row.api}>
             <span role="cell" className="price-api">
@@ -57,9 +65,17 @@ export function MarketingCostTable() {
               {row.api}
             </span>
             <span role="cell" className="price-track" aria-label={row.purpose}>
-              <span
-                className={row.api === "reddit.search" ? "price-bar accent" : "price-bar"}
-                style={{ width: `${(Number(row.cost.slice(1)) / 0.002) * 100}%` }}
+              <motion.span
+                initial={reduced ? false : { scaleX: 0 }}
+                whileInView={{ scaleX: 1 }}
+                viewport={{ once: true }}
+                transition={{ duration: reduced ? 0 : 0.5, ease: "easeOut" }}
+                className={
+                  row.api === "reddit.search" ? "price-bar accent" : "price-bar"
+                }
+                style={{
+                  width: `${(Number(row.cost.slice(1)) / 0.002) * 100}%`,
+                }}
               />
             </span>
             <span role="cell" className="price-value">
@@ -68,7 +84,11 @@ export function MarketingCostTable() {
           </div>
         ))}
       </div>
-      <div className="tier-selector" role="tablist" aria-label="Hosting options">
+      <div
+        className="tier-selector"
+        role="tablist"
+        aria-label="Hosting options"
+      >
         {OPTIONS.map((option, index) => (
           <button
             key={option.id}
@@ -82,7 +102,8 @@ export function MarketingCostTable() {
             onKeyDown={(event) => {
               if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
                 event.preventDefault();
-                const next = OPTIONS[(index + (event.key === "ArrowRight" ? 1 : 2)) % 3];
+                const next =
+                  OPTIONS[(index + (event.key === "ArrowRight" ? 1 : 2)) % 3];
                 setChoice(next.id);
                 document.getElementById(`tier-${next.id}`)?.focus();
               }
@@ -119,6 +140,7 @@ export function MarketingCostTable() {
             : "Configure Docker, Postgres, Clerk, AnyAPI and OpenRouter. Model usage is billed separately."}
         </small>
       </div>
+      <WalletConsent />
     </section>
   );
 }

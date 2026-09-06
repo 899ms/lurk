@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { Copy, Check, ExternalLink } from "lucide-react";
 import { AuthorAvatar } from "@/components/AuthorAvatar";
-import { MOCK_DETAIL, MOCK_DRAFT } from "./mockContent";
+import { DRAFT_THREAD, MOCK_DRAFT } from "./mockContent";
 
 export function DraftPreview() {
   const [status, setStatus] = useState("Copy draft");
@@ -17,24 +17,38 @@ export function DraftPreview() {
   return (
     <div className="draft-preview">
       <div className="draft-context">
-        <AuthorAvatar name={MOCK_DETAIL.author} src={MOCK_DETAIL.avatar} size={36} />
+        <AuthorAvatar
+          name={DRAFT_THREAD.author}
+          src={DRAFT_THREAD.avatar}
+          size={36}
+        />
         <div>
-          Reply to u/{MOCK_DETAIL.author}
+          Reply to u/{DRAFT_THREAD.author}
           <small>Comment draft / conversation starter</small>
         </div>
       </div>
+      <a
+        className="draft-thread-title"
+        href={DRAFT_THREAD.url}
+        target="_blank"
+        rel="noreferrer"
+      >
+        {DRAFT_THREAD.title}
+      </a>
       <p>{MOCK_DRAFT}</p>
       <div className="draft-actions">
         <button type="button" className="marketing-button" onClick={copyDraft}>
           {status === "Copied" ? <Check /> : <Copy />}
           {status}
         </button>
-        <a href={MOCK_DETAIL.url} target="_blank" rel="noreferrer">
+        <a href={DRAFT_THREAD.url} target="_blank" rel="noreferrer">
           Open thread
           <ExternalLink />
         </a>
       </div>
-      <small>Example draft. Nothing is sent from this page.</small>
+      <small>
+        Illustrative draft for this unscored saved thread. Nothing is sent.
+      </small>
     </div>
   );
 }

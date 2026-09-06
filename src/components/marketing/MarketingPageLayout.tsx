@@ -3,18 +3,19 @@ import { MarketingNav } from "./MarketingNav";
 import { MarketingFooter } from "./MarketingFooter";
 import { MarketingShowcase } from "./MarketingShowcase";
 import { MarketingFeatures } from "./MarketingFeatures";
-import { SelfHostBlock } from "./SelfHostBlock";
+import { MotionPanel } from "./MotionPanel";
 import { CtaRow } from "./CtaRow";
 import { BrandImage } from "./BrandImage";
 import type { Variant } from "./VariantSwitcher";
 import "./marketing.css";
 import "./below-fold.css";
+import "./round-three.css";
 
 /** One feature story, with three reviewable hero compositions. */
 export function MarketingPageLayout({ variant }: { variant: Variant }) {
   return (
     <main className={`marketing marketing-${variant}`}>
-      <div className="marketing-hero cloud-stage">
+      <MotionPanel>
         <MarketingNav />
         <section className="hero-layout" aria-labelledby="marketing-title">
           <div className="hero-copy">
@@ -33,7 +34,10 @@ export function MarketingPageLayout({ variant }: { variant: Variant }) {
             </h1>
             <div className="hero-description">
               <p>Find the post. Understand the intent. Write a useful reply.</p>
-              <p>Buyer signals, community rules, and the cost of the data - all on the lead.</p>
+              <p>
+                Buyer signals, community rules, and the cost of the data - all
+                on the lead.
+              </p>
             </div>
             <CtaRow />
             <div className="hero-promises">
@@ -48,16 +52,19 @@ export function MarketingPageLayout({ variant }: { variant: Variant }) {
             </div>
           </div>
           <div className="hero-product">
-            <p className="preview-caption">Real saved Reddit examples. Preview, not a live feed.</p>
+            <p className="preview-caption">
+              Real saved Reddit examples. Preview, not a live feed.
+            </p>
             <MarketingShowcase />
           </div>
         </section>
-      </div>
+      </MotionPanel>
       <div className="marketing-body">
         <MarketingFeatures />
-        <SelfHostBlock />
         <section className="closing-cta" data-proof="closing">
-          <span className="closing-eyebrow">Good conversations start with listening</span>
+          <span className="closing-eyebrow">
+            Good conversations start with listening
+          </span>
           <h2>
             Find the ask.
             <br />

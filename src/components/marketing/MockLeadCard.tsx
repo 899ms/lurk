@@ -1,3 +1,4 @@
+import { AnimatedScore } from "./AnimatedScore";
 import { ExternalLink, ShieldCheck } from "lucide-react";
 import { AuthorAvatar } from "@/components/AuthorAvatar";
 import { CostLine } from "@/components/CostLine";
@@ -7,16 +8,31 @@ import { BrandImage } from "./BrandImage";
 import type { MockLead } from "./mockContent";
 
 /** Real saved content; the cost is explicitly a per-call illustration. */
-export function MockLeadCard({ lead }: { lead: MockLead }) {
+export function MockLeadCard({
+  lead,
+  animateScore = false,
+}: {
+  lead: MockLead;
+  animateScore?: boolean;
+}) {
   return (
     <article className="mock-lead">
       <div className="mock-identity">
         <AuthorAvatar name={lead.author} src={lead.avatar} size={30} />
         <span>u/{lead.author}</span>
         <SubredditChip name={lead.subreddit} iconUrl={lead.subredditIcon} />
-        <ScoreBadge score={lead.score} className="ml-auto" />
+        {animateScore ? (
+          <AnimatedScore score={lead.score} />
+        ) : (
+          <ScoreBadge score={lead.score} className="ml-auto" />
+        )}
       </div>
-      <a className="mock-lead-title" href={lead.url} target="_blank" rel="noreferrer">
+      <a
+        className="mock-lead-title"
+        href={lead.url}
+        target="_blank"
+        rel="noreferrer"
+      >
         {lead.title}
         <ExternalLink />
       </a>

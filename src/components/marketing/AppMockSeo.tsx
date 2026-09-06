@@ -16,14 +16,17 @@ export function AppMockSeo() {
         <div className="mock-section-title">
           <BrandImage name="Google" src="/brands/google.svg" size={24} />
           <span>
-            Typeform alternatives<small>Saved Google results</small>
+            free form builder<small>Saved Google results</small>
           </span>
         </div>
-        <p className="mock-muted">Find the conversations people reach from search.</p>
+        <p className="mock-muted">
+          Find the conversations people reach from search.
+        </p>
         {MOCK_SEO.map((thread) => (
           <div className="mock-seo-row" key={thread.url}>
             <div className="mock-rank">
-              <BrandImage name="Google" src="/brands/google.svg" size={18} />#{thread.position}
+              <BrandImage name="Google" src="/brands/google.svg" size={18} />#
+              {thread.position}
             </div>
             <div>
               <a href={thread.url} target="_blank" rel="noreferrer">

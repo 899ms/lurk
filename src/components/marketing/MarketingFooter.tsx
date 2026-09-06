@@ -6,14 +6,14 @@ const COLUMNS = [
     title: "Discover",
     links: [
       ["Leads", "#features"],
-      ["Reddit SEO", "#features"],
+      ["Reddit SEO", "#seo"],
       ["Competitors", "#insights"],
     ],
   },
   {
     title: "Understand",
     links: [
-      ["Scores and reasons", "#score"],
+      ["Scores and reasons", "#features"],
       ["Community rules", "#rules"],
       ["Insights", "#insights"],
     ],
@@ -52,6 +52,7 @@ export function MarketingFooter() {
         ))}
         <div>
           <span>Get started</span>
+          <a href="https://github.com/getanyapi-com/lurk">GitHub / at launch</a>
           <Link href="/sign-up">Hosted free</Link>
           <a href="https://getanyapi.com">AnyAPI</a>
           <a href="mailto:support@getanyapi.com">Contact</a>

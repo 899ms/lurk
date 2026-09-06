@@ -7,7 +7,11 @@ import { MOCK_LEADS } from "./mockContent";
 
 export function AppMockLeads() {
   return (
-    <MockFrame active="Leads" title="Leads" actions={<MockButton label="Scan now" tone="solid" />}>
+    <MockFrame
+      active="Leads"
+      title="Leads"
+      actions={<MockButton label="Scan now" tone="solid" />}
+    >
       <div className="mock-content">
         <div className="mock-filters">
           <span>
@@ -21,7 +25,7 @@ export function AppMockLeads() {
           <small>Saved examples</small>
         </div>
         <MockTimeline />
-        <MockLeadCard lead={MOCK_LEADS[0]} />
+        <MockLeadCard lead={MOCK_LEADS[0]} animateScore />
         <div className="mock-comment">
           <span className="mock-meta">Also in this conversation</span>
           <MockLeadCard lead={MOCK_LEADS[1]} />
