@@ -1,4 +1,4 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { jobs } from "@/db/schema";
 
@@ -64,6 +64,17 @@ export async function lastRunJob(kind: string, projectId: string): Promise<JobRo
     .from(jobs)
     .where(and(eq(jobs.kind, kind), eq(jobs.projectId, projectId)))
     .orderBy(sql`started_at desc nulls last`)
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/** The next scan waiting for this project, or null when none is scheduled. */
+export async function nextScanJob(projectId: string): Promise<JobRow | null> {
+  const rows = await db()
+    .select()
+    .from(jobs)
+    .where(and(eq(jobs.kind, "scan"), eq(jobs.projectId, projectId), isNull(jobs.startedAt)))
+    .orderBy(asc(jobs.runAt))
     .limit(1);
   return rows[0] ?? null;
 }

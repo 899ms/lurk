@@ -1,17 +1,17 @@
 import { EmptyState } from "@/components/EmptyState";
 import { FeedFilters } from "@/components/leads/FeedFilters";
+import { HeldCard } from "@/components/leads/HeldCard";
 import { LeadCard, type CardLead } from "@/components/leads/LeadCard";
-import { LeadTimeline } from "@/components/leads/LeadTimeline";
-import { ReviewBucket } from "@/components/leads/ReviewBucket";
+import { PeopleStrip } from "@/components/leads/PeopleStrip";
 import { ScanStatus } from "@/components/leads/ScanStatus";
+import { buildStream } from "@/components/leads/stream";
 import { Button } from "@/components/ui/button";
 import { scanNowAction } from "@/app/app/scan";
-import { lastRunJob } from "@/jobs/enqueue";
+import { lastRunJob, nextScanJob } from "@/jobs/enqueue";
 import { requireLocalUser } from "@/lib/auth";
 import { FEED_WINDOWS, type FeedWindow, type LeadStatus } from "@/lib/feed";
 import { feedFacets, listLeads, listReviewItems } from "@/lib/leads";
 import { activeProject } from "@/lib/projects";
-import { sourcesForPosts } from "@/lib/usage";
 
 type LeadsPageProps = {
   searchParams: Promise<{
@@ -32,10 +32,7 @@ const EMPTY_SENTENCE: Record<LeadStatus, string> = {
   resolved: "No lead has said in its thread that the need is already met.",
 };
 
-function toCard(
-  lead: Awaited<ReturnType<typeof listLeads>>[number],
-  sources: Map<string, { kind: string; key: string }[]>,
-): CardLead {
+function toCard(lead: Awaited<ReturnType<typeof listLeads>>[number]): CardLead {
   const isComment = lead.commentId !== null;
   return {
     id: lead.id,
@@ -62,8 +59,6 @@ function toCard(
     isComment,
     postAuthor: lead.postAuthor,
     postAuthorAvatar: lead.postAuthorAvatar,
-    observedAt: lead.commentsObservedAt ?? lead.bodyObservedAt,
-    sources: (lead.postId ? sources.get(lead.postId) : undefined) ?? [],
   };
 }
 
@@ -82,17 +77,14 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
 
   const status = STATUSES.find((one) => one === params.status) ?? "new";
   const days = (FEED_WINDOWS.find((one) => String(one) === params.days) ?? 30) as FeedWindow;
-  const [rows, facets, job, review] = await Promise.all([
+  const [rows, facets, last, next, review] = await Promise.all([
     listLeads(project.id, { status, days, subreddit: params.subreddit, stage: params.stage }),
     feedFacets(project.id),
     lastRunJob("scan", project.id),
+    nextScanJob(project.id),
     listReviewItems(project.id, days),
   ]);
-  const sources = await sourcesForPosts(
-    project.id,
-    rows.map((lead) => lead.postId).filter((postId): postId is string => postId !== null),
-  );
-  const cards = rows.map((lead) => toCard(lead, sources));
+  const entries = buildStream(rows.map(toCard), status === "new" ? review : []);
 
   return (
     <div className="flex flex-col gap-5">
@@ -101,7 +93,7 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
           <h2 className="text-h2" style={{ fontWeight: 500 }}>
             {project.name}
           </h2>
-          <ScanStatus job={job} />
+          <ScanStatus last={last} next={next} />
         </div>
         <form action={scanNowAction.bind(null, project.id)}>
           <Button type="submit" size="lg">
@@ -109,25 +101,19 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
           </Button>
         </form>
       </div>
+      <PeopleStrip entries={entries} />
       <FeedFilters facets={facets} />
-      <LeadTimeline
-        leads={cards.map((card) => ({
-          id: card.id,
-          author: card.author,
-          avatarUrl: card.avatarUrl,
-          subreddit: card.subreddit,
-          title: card.title,
-          createdAt: card.createdAt,
-        }))}
-      />
-      {status === "new" ? <ReviewBucket items={review} /> : null}
-      {cards.length === 0 ? (
+      {entries.length === 0 ? (
         <EmptyState title="Nothing here" sentence={EMPTY_SENTENCE[status]} />
       ) : (
         <div className="flex flex-col gap-3">
-          {cards.map((card) => (
-            <LeadCard key={card.id} lead={card} projectId={project.id} />
-          ))}
+          {entries.map((entry) =>
+            entry.kind === "lead" ? (
+              <LeadCard key={entry.id} lead={entry.lead} projectId={project.id} />
+            ) : (
+              <HeldCard key={entry.id} item={entry.item} />
+            ),
+          )}
         </div>
       )}
     </div>

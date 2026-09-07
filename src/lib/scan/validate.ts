@@ -61,24 +61,27 @@ export function isVerbatim(quote: string, supplied: string[]): boolean {
   return needle.length > 0 && supplied.some((text) => normalize(text).includes(needle));
 }
 
-function quotesOf(item: Judgement): string[] {
-  return [
-    ...(item.needEvidence ? [item.needEvidence.quote] : []),
-    ...item.requirements.map((need) => need.targetEvidence.quote),
-  ];
-}
-
 /**
- * A judgement whose evidence is in neither the excerpt the model was shown nor
- * the item's own untruncated text goes to review, not to the feed. So does a
- * qualified lead with no quote of the person's own words at all: the feed card
- * is built out of that quote.
+ * A judgement whose need quote is in neither the excerpt the model was shown
+ * nor the item's own untruncated text goes to review, not to the feed. So does
+ * a qualified lead with no quote of the person's own words at all: the feed
+ * card is built out of that quote.
+ *
+ * A requirement the model mis-quoted is dropped rather than holding the lead,
+ * unless it is an unmet hard requirement: that one rejects on the gates, and a
+ * shaky quote is not a reason to let it through. A mistyped apostrophe in a
+ * soft requirement once held a buyer with a verbatim need quote and fit 3.
  */
 export function withCheckedEvidence(item: Judgement, source: ScorableItem): Judgement {
   const supplied = [describeItem(source), describeItemUncut(source)];
   const unquoted = item.decision === "qualify" && !item.needEvidence;
-  if (unquoted || quotesOf(item).some((quote) => !isVerbatim(quote, supplied))) {
+  if (unquoted || (item.needEvidence && !isVerbatim(item.needEvidence.quote, supplied))) {
     return downgradeToReview(item, "insufficient_evidence");
   }
-  return item;
+  const requirements = item.requirements.filter(
+    (need) =>
+      isVerbatim(need.targetEvidence.quote, supplied) ||
+      (need.importance === "hard" && need.satisfaction === "unmet"),
+  );
+  return requirements.length === item.requirements.length ? item : { ...item, requirements };
 }

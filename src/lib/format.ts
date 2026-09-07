@@ -24,3 +24,11 @@ export function relativeAge(date: Date, now = new Date()): string {
   const age = shortAge(date, now);
   return age === "0m" ? "just now" : `${age} ago`;
 }
+
+/** How long until something happens, or "now" once its time has passed. */
+export function relativeUntil(date: Date, now = new Date()): string {
+  if (date.getTime() <= now.getTime()) {
+    return "now";
+  }
+  return `in ${shortAge(now, date)}`;
+}

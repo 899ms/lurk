@@ -134,6 +134,20 @@ describe("the qualification gates", () => {
     expect(judged.reasonCodes).toContain("insufficient_evidence");
   });
 
+  it("rejects a person it cannot place once their need or fit is settled anyway", () => {
+    for (const patch of [
+      { relationship: "unknown" as const, needState: "no_active_need" as const, fit: 0 },
+      { relationship: "unknown" as const, needState: "open" as const, fit: 0 },
+      { relationship: "discussion" as const, needState: "unknown" as const, fit: null },
+    ]) {
+      const judged = judge(
+        assessment({ ...patch, decision: "review", reasonCodes: ["insufficient_evidence"] }),
+        item,
+      );
+      expect(judged.decision).toBe("reject");
+    }
+  });
+
   it("still holds a plausible buyer with one material unknown for review", () => {
     for (const patch of [
       { relationship: "buyer" as const, needState: "unknown" as const, fit: null },
@@ -207,6 +221,18 @@ describe("judging a batch", () => {
     expect(judged).toEqual([]);
   });
 
+  it("shows the model plain typography, so a curly apostrophe cannot be garbled back", () => {
+    const curly: ScorableItem = {
+      ...item,
+      title: "Hotels that \u201Callow\u201D 18 \u2013 cheap?",
+      body: "some that wouldn\u2019t cost that much\u2026 \u0019ok",
+    };
+    const shown = describeItem(curly);
+    expect(shown).toContain('title: Hotels that "allow" 18 - cheap?');
+    expect(shown).toContain("target text: some that wouldn't cost that much... ok");
+    expect(shown).not.toMatch(/[\u2018\u2019\u201C\u201D\u2013\u2026\u0019]/);
+  });
+
   it("keeps a lead whose quote differs from the text only in typography", async () => {
     const typography: ScorableItem = {
       ...item,
@@ -237,6 +263,54 @@ describe("judging a batch", () => {
     const judged = await judgeItems("project-1", "A form builder", [long]);
     expect(describeItem(long)).not.toContain("we need webhooks on every submission.");
     expect(judged[0].decision).toBe("qualify");
+  });
+
+  it("drops a met requirement the model mis-quoted instead of holding the lead", async () => {
+    generateStructured.mockReset();
+    generateStructured.mockResolvedValueOnce({
+      items: [
+        assessment({
+          requirements: [
+            {
+              requirement: "conditional logic",
+              importance: "soft",
+              satisfaction: "met",
+              targetEvidence: { quote: "needs conditional logic" },
+            },
+            {
+              requirement: "payments",
+              importance: "hard",
+              satisfaction: "met",
+              targetEvidence: { quote: "it has to take paymentse2" },
+            },
+          ],
+        }),
+      ],
+    });
+    const judged = await judgeItems("project-1", "A form builder", [item]);
+    expect(judged[0].decision).toBe("qualify");
+    expect(judged[0].requirements.map((need) => need.requirement)).toEqual(["conditional logic"]);
+  });
+
+  it("keeps an unmet hard requirement whatever its quote, so it still rejects", async () => {
+    generateStructured.mockReset();
+    generateStructured.mockResolvedValueOnce({
+      items: [
+        assessment({
+          requirements: [
+            {
+              requirement: "Kafka alerts",
+              importance: "hard",
+              satisfaction: "unmet",
+              targetEvidence: { quote: "we need Kafka alertse2" },
+            },
+          ],
+        }),
+      ],
+    });
+    const judged = await judgeItems("project-1", "A form builder", [item]);
+    expect(judged[0].decision).toBe("reject");
+    expect(judged[0].reasonCodes).toContain("hard_requirement_mismatch");
   });
 
   it("sends a judgement whose quote is not in the supplied text to review", async () => {

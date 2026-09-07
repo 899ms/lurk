@@ -15,6 +15,22 @@ export const PARENT_CHAR_BUDGET = 1200;
 const ELISION = "\n[...]\n";
 
 /**
+ * Reddit text in the plain characters a model quotes back reliably. Curly
+ * quotes, typographic dashes and stray control characters are what the model
+ * garbled on a perfect lead: it returned "wouldn\u00191" for a curly
+ * "wouldn't", so the quote failed verification and the buyer sat on the held
+ * list. The model never sees the curly forms now, so it cannot mangle them.
+ */
+export function plainTypography(text: string): string {
+  return text
+    .replace(/[\u2018\u2019\u201A\u201B\u2032]/g, "'")
+    .replace(/[\u201C\u201D\u201E\u201F\u2033\u00AB\u00BB]/g, '"')
+    .replace(/[\u2010-\u2015\u2212]/g, "-")
+    .replace(/\u2026/g, "...")
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "");
+}
+
+/**
  * Keeps the head and the tail of a long body. Reddit puts the edit, the update
  * and the "solved, thanks" at the end, so a head-only cut removes exactly the
  * evidence that would reject the lead.
@@ -47,9 +63,11 @@ function describe(item: ScorableItem, body: string, parentBody: string | null): 
     `age: ${Math.round(item.ageHours)}h`,
     `upvotes: ${item.upvotes ?? 0}`,
     `comments on the thread: ${item.numComments ?? 0}`,
-    `title: ${item.title}`,
-    parentBody === null ? null : `parent post the target is replying to: ${parentBody}`,
-    `target text: ${body}`,
+    `title: ${plainTypography(item.title)}`,
+    parentBody === null
+      ? null
+      : `parent post the target is replying to: ${plainTypography(parentBody)}`,
+    `target text: ${plainTypography(body)}`,
   ]
     .filter((line): line is string => line !== null)
     .join("\n");

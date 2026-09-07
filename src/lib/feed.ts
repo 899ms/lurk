@@ -30,6 +30,10 @@ export type ReviewItem = {
   subreddit: string;
   url: string;
   author: string | null;
+  avatarUrl: string | null;
+  subredditIconUrl: string | null;
+  numComments: number | null;
+  points: number | null;
   isComment: boolean;
   reason: string;
   reasonCodes: string[];

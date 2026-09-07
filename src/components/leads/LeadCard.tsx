@@ -3,14 +3,15 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowUp, MessageCircle } from "lucide-react";
 import { AuthorAvatar } from "@/components/AuthorAvatar";
-import { DraftPanel } from "@/components/drafts/DraftPanel";
 import { Avatar } from "@/components/Avatar";
+import { DraftPanel } from "@/components/drafts/DraftPanel";
 import { ScoreBadge } from "@/components/ScoreBadge";
 import { SubredditChip } from "@/components/SubredditChip";
 import { HighlightedBody } from "@/components/leads/HighlightedBody";
-import { FoundVia, type LeadSource } from "@/components/leads/FoundVia";
 import { LeadActions } from "@/components/leads/LeadActions";
 import { PromoPolicyBadge } from "@/components/leads/PromoPolicyBadge";
+import { Meter } from "@/components/leads/Meter";
+import { StageChip } from "@/components/leads/StageChip";
 import { relativeAge } from "@/lib/format";
 
 export type CardLead = {
@@ -38,33 +39,17 @@ export type CardLead = {
   isComment: boolean;
   postAuthor: string | null;
   postAuthorAvatar: string | null;
-  /** When the thread behind this lead was last really read. */
-  observedAt: Date | null;
-  /** Every query, community or Google search that found this post. */
-  sources: LeadSource[];
 };
 
 type LeadCardProps = { lead: CardLead; projectId: string };
 
 const EXCERPT_CHARS = 320;
 
-/** Fit, intent and engagement are all judged on the same 0-4 scale. */
-function Metric({ label, value }: { label: string; value: number | null }) {
-  return (
-    <span className="flex flex-col gap-0.5">
-      <span className="text-mono text-fg-muted">{label}</span>
-      <span className="text-small tabular-nums text-fg">
-        {value ?? "-"}
-        <span className="text-fg-muted"> / 4</span>
-      </span>
-    </span>
-  );
-}
-
-/** One lead, from who posted it down to what its data cost. Click to expand. */
+/** One lead in the stream: who posted it, what they said, and how it scored. */
 export function LeadCard({ lead, projectId }: LeadCardProps) {
   const [open, setOpen] = useState(false);
   const [draftRequests, setDraftRequests] = useState(0);
+  const [thumbnail, setThumbnail] = useState<"pending" | "ok" | "broken">("pending");
   const draftRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -78,8 +63,8 @@ export function LeadCard({ lead, projectId }: LeadCardProps) {
     setDraftRequests((count) => count + 1);
   }
 
-  const text = open || lead.body.length <= EXCERPT_CHARS ? lead.body : `${lead.body.slice(0, EXCERPT_CHARS)}...`;
-  const stage = lead.stage ? lead.stage.replace(/_/g, " ") : null;
+  const text =
+    open || lead.body.length <= EXCERPT_CHARS ? lead.body : `${lead.body.slice(0, EXCERPT_CHARS)}...`;
 
   return (
     <div className="flex flex-col gap-4 rounded-card border bg-surface p-4">
@@ -104,22 +89,13 @@ export function LeadCard({ lead, projectId }: LeadCardProps) {
             </span>
             <SubredditChip name={lead.subreddit} iconUrl={lead.subredditIconUrl} />
             <span className="text-mono text-fg-muted">{relativeAge(lead.createdAt)}</span>
-            {lead.observedAt ? (
-              <span className="text-mono text-fg-muted">
-                checked {relativeAge(lead.observedAt)}
-              </span>
-            ) : null}
+            <StageChip stage={lead.stage} />
             <ScoreBadge score={lead.score} className="ml-auto" />
           </div>
 
           <h3 className="text-h3 text-fg" style={{ fontWeight: 500 }}>
             {lead.title}
           </h3>
-          <p className="text-mono text-fg-muted">
-            in r/{lead.subreddit}
-            {stage ? ` - ${stage}` : ""}
-          </p>
-          <FoundVia sources={lead.sources} />
 
           {lead.isComment ? (
             <div className="flex items-center gap-2 rounded-control bg-surface-2 px-2 py-1 text-mono text-fg-muted">
@@ -138,10 +114,10 @@ export function LeadCard({ lead, projectId }: LeadCardProps) {
             <p className="text-body text-fg-muted">A title only, with no text of its own.</p>
           )}
 
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 pt-1">
-            <Metric label="Fit" value={lead.fit} />
-            <Metric label="Intent" value={lead.intent} />
-            <Metric label="Engagement" value={lead.engagement} />
+          <div className="flex flex-wrap items-end gap-x-6 gap-y-3 pt-1">
+            <Meter label="Fit" value={lead.fit} />
+            <Meter label="Intent" value={lead.intent} />
+            <Meter label="Engagement" value={lead.engagement} />
             <span className="inline-flex items-center gap-1 text-mono tabular-nums text-fg-muted">
               <ArrowUp className="size-3.5" aria-hidden="true" />
               {lead.points ?? 0}
@@ -154,15 +130,28 @@ export function LeadCard({ lead, projectId }: LeadCardProps) {
           </div>
         </div>
 
-        {lead.imageUrl ? (
-          // Reddit serves post images from several CDN hosts we do not control.
+        {lead.imageUrl && thumbnail !== "broken" ? (
+          // Reddit serves post images from several CDN hosts we do not control,
+          // and plenty of them are already gone. The frame appears only once the
+          // picture itself has decoded, so a dead link leaves no broken box.
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={lead.imageUrl}
             alt=""
             width={56}
             height={56}
-            className="size-14 shrink-0 rounded-control border object-cover"
+            ref={(node) => {
+              if (node?.complete) {
+                setThumbnail(node.naturalWidth > 0 ? "ok" : "broken");
+              }
+            }}
+            onLoad={() => setThumbnail("ok")}
+            onError={() => setThumbnail("broken")}
+            className={
+              thumbnail === "ok"
+                ? "size-14 shrink-0 rounded-control border object-cover"
+                : "hidden"
+            }
           />
         ) : null}
 

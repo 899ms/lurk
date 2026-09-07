@@ -217,6 +217,26 @@ describe.skipIf(!hasDatabase)("runScan against a database", () => {
     expect(held[0]?.judgedAt).toBeInstanceOf(Date);
   });
 
+  it("never lists a thread as held once it is already a lead", async () => {
+    const row = await project();
+    const [only] = await posts(1);
+    fetchSearch.mockResolvedValue({ value: { posts: [only], nextCursor: null }, reused: true, costUsd: 0 });
+    fetchPost.mockResolvedValue({ value: [only], reused: true, costUsd: 0 });
+    model([only.id], (id) => assessment(id, { decision: "qualify", fit: 3, intent: 3 }));
+    await runScan(row.id, randomUUID());
+    expect(await listLeads(row.id, { status: "new", days: 30 })).toHaveLength(1);
+
+    await db()
+      .update(schema.projects)
+      .set({ profileVersion: 2, solution: "A form builder that also analyses answers." })
+      .where(eq(schema.projects.id, row.id));
+    model([only.id], (id) => assessment(id, { decision: "review", fit: 2 }));
+    await runScan(row.id, randomUUID());
+
+    expect(await listReviewItems(row.id, 30)).toHaveLength(0);
+    expect(await listLeads(row.id, { status: "new", days: 30 })).toHaveLength(1);
+  });
+
   it("judges a candidate again once the product profile has changed", async () => {
     const row = await project();
     const [only] = await posts(1);
@@ -332,11 +352,10 @@ describe.skipIf(!hasDatabase)("runScan against a database", () => {
     expect(keyword.lastCoveredAt).toBeInstanceOf(Date);
     expect(sub.lastCoveredAt).toBeInstanceOf(Date);
 
-    const { sourceYield, sourcesForPosts } = await import("@/lib/usage");
+    const { sourceYield } = await import("@/lib/usage");
     const perSource = await sourceYield(row.id);
     expect(perSource.map((one) => one.kind).sort()).toEqual(["listing", "scoped", "search"]);
     expect(perSource.every((one) => one.candidates === 1 && one.leads === 1)).toBe(true);
-    expect((await sourcesForPosts(row.id, [only.id])).get(only.id)).toHaveLength(3);
   });
 
   it("reads the younger post first when the triage ranks two candidates alike", async () => {

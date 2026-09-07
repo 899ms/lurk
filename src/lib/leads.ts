@@ -1,4 +1,4 @@
-import { aliasedTable, and, asc, count, desc, eq, inArray, sql } from "drizzle-orm";
+import { aliasedTable, and, asc, count, desc, eq, inArray, notExists, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
   leadEvaluations,
@@ -107,7 +107,9 @@ export async function listLeads(projectId: string, filter: FeedFilter) {
 /**
  * The candidates the scan held back because the evidence did not settle them.
  * They are not leads and never enter the feed count, but they are the seven or
- * so items per scan that a person can settle in a glance.
+ * so items per scan that a person can settle in a glance. A thread that is
+ * already a lead for this project is never listed twice: a later rerun holding
+ * it does not undo the earlier call.
  */
 export async function listReviewItems(projectId: string, days: number): Promise<ReviewItem[]> {
   const rows = await db()
@@ -117,6 +119,10 @@ export async function listReviewItems(projectId: string, days: number): Promise<
       subreddit: redditPosts.subreddit,
       url: sql<string>`coalesce(${redditComments.permalink}, ${redditPosts.url})`,
       author: sql<string | null>`coalesce(${redditComments.author}, ${redditPosts.author})`,
+      avatarUrl: redditAuthors.avatarUrl,
+      subredditIconUrl: subreddits.iconUrl,
+      numComments: redditPosts.numComments,
+      points: sql<number | null>`coalesce(${redditComments.score}, ${redditPosts.score})`,
       isComment: sql<boolean>`${leadEvaluations.commentId} is not null`,
       reason: leadEvaluations.reason,
       reasonCodes: leadEvaluations.reasonCodes,
@@ -129,11 +135,28 @@ export async function listReviewItems(projectId: string, days: number): Promise<
     .from(leadEvaluations)
     .innerJoin(redditPosts, eq(redditPosts.id, leadEvaluations.postId))
     .leftJoin(redditComments, eq(redditComments.id, leadEvaluations.commentId))
+    .leftJoin(subreddits, eq(subreddits.name, sql`lower(${redditPosts.subreddit})`))
+    .leftJoin(
+      redditAuthors,
+      eq(redditAuthors.username, sql`lower(coalesce(${redditComments.author}, ${redditPosts.author}))`),
+    )
     .where(
       and(
         eq(leadEvaluations.projectId, projectId),
         eq(leadEvaluations.decision, "review"),
         newerThan(days),
+        notExists(
+          db()
+            .select({ one: sql`1` })
+            .from(leads)
+            .where(
+              and(
+                eq(leads.projectId, leadEvaluations.projectId),
+                eq(leads.postId, leadEvaluations.postId),
+                sql`${leads.commentId} is not distinct from ${leadEvaluations.commentId}`,
+              ),
+            ),
+        ),
       ),
     )
     .orderBy(desc(leadEvaluations.judgedAt));

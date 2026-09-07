@@ -20,8 +20,10 @@ const REJECTING: ReasonCode[] = [
 
 /**
  * The first gate this assessment fails, as the reason code that names it, or
- * null when it passes every gate. Ordered so the earliest, plainest failure is
- * the one reported.
+ * null when it passes every gate. A settled reading rejects before an unknown
+ * one holds: a person with no active need, or a job the product plainly does
+ * not do, is a rejection whoever they turned out to be, so not knowing who
+ * they are never keeps them on the review list.
  */
 export function gateFailure(item: Assessment): ReasonCode | null {
   if (item.relationship === "seller") {
@@ -30,23 +32,20 @@ export function gateFailure(item: Assessment): ReasonCode | null {
   if (item.relationship === "helper") {
     return "helper_only";
   }
-  if (item.relationship !== "buyer") {
-    return item.relationship === "discussion" ? "no_active_need" : "insufficient_evidence";
-  }
   if (item.needState === "resolved") {
     return "resolved";
   }
-  if (item.needState === "no_active_need") {
+  if (item.needState === "no_active_need" || item.relationship === "discussion") {
     return "no_active_need";
   }
-  if (item.needState === "unknown") {
+  if (item.fit !== null && item.fit < 2) {
+    return "wrong_job";
+  }
+  if (item.relationship !== "buyer" || item.needState === "unknown") {
     return "insufficient_evidence";
   }
   if (item.fit === null || item.fit === 2) {
     return "insufficient_evidence";
-  }
-  if (item.fit < 3) {
-    return "wrong_job";
   }
   if (item.intent === null) {
     return "insufficient_evidence";

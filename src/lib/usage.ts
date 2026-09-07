@@ -133,31 +133,6 @@ export async function serpCallsToday(projectId: string): Promise<number> {
   return row?.calls ?? 0;
 }
 
-/** Where the candidates of one project came from, by post. */
-export async function sourcesForPosts(
-  projectId: string,
-  postIds: string[],
-): Promise<Map<string, { kind: string; key: string }[]>> {
-  if (postIds.length === 0) {
-    return new Map();
-  }
-  const rows = await db()
-    .select({
-      postId: candidateSources.postId,
-      kind: candidateSources.sourceKind,
-      key: candidateSources.sourceKey,
-    })
-    .from(candidateSources)
-    .where(
-      and(eq(candidateSources.projectId, projectId), inArray(candidateSources.postId, postIds)),
-    );
-  const byPost = new Map<string, { kind: string; key: string }[]>();
-  for (const row of rows) {
-    byPost.set(row.postId, [...(byPost.get(row.postId) ?? []), { kind: row.kind, key: row.key }]);
-  }
-  return byPost;
-}
-
 export type SourceYield = {
   kind: string;
   key: string;
