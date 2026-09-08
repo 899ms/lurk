@@ -131,9 +131,33 @@ describe.skipIf(!hasDatabase)("runScan against a database", () => {
     );
   }
 
-  /** Triage in a fixed order, then one assessment per id the prompt carries. */
-  function model(order: string[], score: (id: string, prompt: string) => Assessment) {
+  /** What the shared reading says about a post, before any product. */
+  function reading(patch: Record<string, unknown> = {}) {
+    return {
+      speaker: "buyer",
+      asking: true,
+      need: "a form builder with conditional logic",
+      category: "form builder",
+      constraints: [],
+      ...patch,
+    };
+  }
+
+  /**
+   * Triage in a fixed order, the shared reading of each post, then one
+   * assessment per id the judgement prompt carries. `read` says what the
+   * reading found; by default a buyer who is asking, which is the only reading
+   * that lets a post reach the judge at all.
+   */
+  function model(
+    order: string[],
+    score: (id: string, prompt: string) => Assessment,
+    read: (prompt: string) => Record<string, unknown> = () => reading(),
+  ) {
     generateStructured.mockImplementation(async (input: { purpose: string; prompt: string }) => {
+      if (input.purpose === "reading") {
+        return read(input.prompt);
+      }
       if (input.purpose === "triage") {
         return {
           items: order.map((id, index) => ({
@@ -183,6 +207,40 @@ describe.skipIf(!hasDatabase)("runScan against a database", () => {
     generateStructured.mockClear();
     await runScan(row.id, randomUUID());
     expect(generateStructured).not.toHaveBeenCalled();
+  });
+
+  it("keeps a post the shared reading calls a seller away from the judge", async () => {
+    const row = await project();
+    const [only] = await posts(1);
+    fetchSearch.mockResolvedValue({ value: { posts: [only], nextCursor: null }, reused: true, costUsd: 0 });
+    fetchPost.mockResolvedValue({ value: [only], reused: true, costUsd: 0 });
+    model([only.id], (id) => assessment(id), () => reading({ speaker: "seller", asking: false }));
+
+    const outcome = await runScan(row.id, randomUUID());
+    const judged = generateStructured.mock.calls.filter((call) => call[0].purpose === "score");
+    expect(judged).toHaveLength(0);
+    expect(outcome.leads).toBe(0);
+    const stored = await evaluations(row.id);
+    expect(stored).toHaveLength(1);
+    expect(stored[0]?.decision).toBe("reject");
+    expect(stored[0]?.reasonCodes).toContain("seller_only");
+  });
+
+  it("reads one post once however many projects are watching it", async () => {
+    const [only] = await posts(1);
+    fetchSearch.mockResolvedValue({ value: { posts: [only], nextCursor: null }, reused: true, costUsd: 0 });
+    fetchPost.mockResolvedValue({ value: [only], reused: true, costUsd: 0 });
+    model([only.id], (id) => assessment(id));
+
+    const readings = () =>
+      generateStructured.mock.calls.filter((call) => call[0].purpose === "reading");
+
+    await runScan((await project()).id, randomUUID());
+    expect(readings()).toHaveLength(1);
+
+    generateStructured.mockClear();
+    await runScan((await project()).id, randomUUID());
+    expect(readings()).toHaveLength(0);
   });
 
   it("never triages, judges or stores a post Reddit has taken away", async () => {

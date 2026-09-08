@@ -1,4 +1,5 @@
 import {
+  boolean,
   index,
   integer,
   jsonb,
@@ -39,6 +40,28 @@ export const redditPosts = pgTable(
   },
   (t) => [index("reddit_posts_subreddit_created_at_idx").on(t.subreddit, t.createdAt)],
 );
+
+/**
+ * One product-agnostic reading of one post: who is speaking and whether they
+ * are asking for anything. It says nothing about any product, so every project
+ * watching this post reads the same row and only the first of them pays for it.
+ * Kept beside the post rather than beside a verdict for that reason.
+ */
+export const postReadings = pgTable("post_readings", {
+  postId: text("post_id")
+    .primaryKey()
+    .references(() => redditPosts.id, { onDelete: "cascade" }),
+  speaker: text("speaker").notNull(),
+  asking: boolean("asking").notNull(),
+  need: text("need").notNull(),
+  category: text("category").notNull(),
+  constraints: jsonb("constraints").$type<string[]>().notNull(),
+  /** The hash of the title and body this reading was made from. */
+  contentHash: text("content_hash").notNull(),
+  /** Bumped when the prompt changes what a stored reading means. */
+  readingVersion: text("reading_version").notNull(),
+  readAt: timestamp("read_at", { withTimezone: true }).notNull().defaultNow(),
+});
 
 export const redditComments = pgTable("reddit_comments", {
   id: text("id").primaryKey(),

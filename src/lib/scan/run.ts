@@ -23,6 +23,7 @@ import { loadScanProject, type ScanProject } from "./project";
 import { retrieve } from "./retrieve";
 import { creditSources, markCovered, type CandidateSource } from "./sources";
 import type { Judgement, ScorableItem } from "./judgement";
+import { readPosts, splitByReading } from "./reading";
 import { judgeItems, readOrder, triageTitles } from "./score";
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -144,8 +145,8 @@ async function evaluationsFor(
 
 /**
  * One scan: run the retrieval plan, triage the titles, read the shortlist in
- * full, judge it, and
- * write what qualified. Only then are comment threads bought, for two separate
+ * full, take the shared reading of each one, judge whatever that reading left,
+ * and write what qualified. Only then are comment threads bought, for two separate
  * purposes: checking whether each qualified need is still open, and finding the
  * other people in the thread who have a need of their own. Leads are already
  * committed by that point, so a thread we cannot read costs a scan nothing.
@@ -217,15 +218,19 @@ export async function runScan(projectId: string, jobId: string): Promise<ScanOut
     full.push(result.value[0] ?? post);
   }
 
-  await writeProgress(jobId, `Scoring ${full.length} posts`);
-  const toJudge = await unjudged(project, stored, full);
-  const judgements = await judgeItems(projectId, project.productText, toJudge.map(postItem));
-  await writeEvaluations(await evaluationsFor(project, toJudge, judgements));
+  await writeProgress(jobId, `Checking who is asking in ${full.length} posts`);
+  const unjudgedPosts = await unjudged(project, stored, full);
+  const sources = unjudgedPosts.map(postItem);
+  const { toJudge, cut } = splitByReading(sources, await readPosts(projectId, sources));
+
+  await writeProgress(jobId, `Scoring ${toJudge.length} of ${sources.length} posts`);
+  const judgements = [...cut, ...(await judgeItems(projectId, project.productText, toJudge))];
+  await writeEvaluations(await evaluationsFor(project, unjudgedPosts, judgements));
   for (const entry of retrieval.covered) {
     await markCovered(entry.row, entry.at);
   }
   const scored = judgements.map((judgement) => ({ judgement }));
-  const fullById = new Map(toJudge.map((post) => [post.id, post]));
+  const fullById = new Map(unjudgedPosts.map((post) => [post.id, post]));
   const postLeads = qualified(scored).map((item) =>
     toLead(project, item.judgement, item.judgement.id, null),
   );
@@ -270,7 +275,7 @@ export async function runScan(projectId: string, jobId: string): Promise<ScanOut
 
   await creditSources(
     sourcesByPost,
-    toJudge.map((post) => post.id),
+    unjudgedPosts.map((post) => post.id),
     [...postLeads, ...rejudged].map((lead) => lead.postId),
   );
 
