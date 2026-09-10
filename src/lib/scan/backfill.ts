@@ -3,7 +3,6 @@ import { clientForUser } from "@/lib/anyapi";
 import type { FetchContext } from "@/lib/reddit/fetch";
 import { fetchSearch } from "@/lib/reddit/skus";
 import { asRawPost, upsertPosts, type StoredPost } from "@/lib/reddit/store";
-import { scanIntervalHours, tierForUser } from "@/lib/tier";
 import { constraintQueries } from "@/lib/discovery/rank";
 import { retrieved, type PlanRow } from "./coverage";
 import { loadEvaluations, writeEvaluations } from "./evaluations";
@@ -44,10 +43,13 @@ export type BackfillOutcome = {
 type Query = { text: string; rows: PlanRow[] };
 
 /**
- * The whole of one query in one order, page after page. The walk stops when a
- * page carries no post id the walk has not already seen, which is what Reddit
- * does at the end of a result set, and when there is no cursor to follow. There
- * is no page cap: a year of one phrasing is what the sweep is for.
+ * The whole of one query in one order, page after page. The walk stops when
+ * Reddit stops handing out a cursor, or hands back the one just followed. It
+ * does not stop on a page that carried nothing new: measured 2026-09-10, the
+ * relevance sort returns sparse pages in the middle of a listing (2, 6, 6, 1,
+ * 0, then six full pages), so treating the first of them as the end truncated
+ * `(hotel OR hotels) AND "under 21"` to 16 posts where the listing holds 150.
+ * There is no page cap: a year of one phrasing is what the sweep is for.
  */
 async function walk(
   ctx: FetchContext,
@@ -56,7 +58,6 @@ async function walk(
   found: Map<string, StoredPost>,
   sources: Map<string, CandidateSource[]>,
 ): Promise<void> {
-  const seen = new Set<string>();
   let cursor: string | undefined;
   for (;;) {
     const result = await fetchSearch(ctx, query.text, {
@@ -64,21 +65,17 @@ async function walk(
       sort,
       ...(cursor ? { cursor } : {}),
     });
-    let fresh = 0;
     for (const post of result.value.posts) {
-      if (!seen.has(post.id)) {
-        seen.add(post.id);
-        fresh += 1;
-      }
       found.set(post.id, post);
       const held = sources.get(post.id) ?? [];
       held.push({ kind: "search", key: query.text, rows: query.rows });
       sources.set(post.id, held);
     }
-    cursor = result.value.nextCursor ?? undefined;
-    if (fresh === 0 || !cursor) {
+    const next = result.value.nextCursor ?? undefined;
+    if (!next || next === cursor) {
       return;
     }
+    cursor = next;
   }
 }
 
@@ -91,10 +88,26 @@ async function walk(
  */
 function queriesOf(project: ScanProject): Query[] {
   const rows = retrieved(project.queries);
-  return [
-    ...rows.flatMap((row) => constraintQueries(row.key).map((text) => ({ text, rows: [row] }))),
-    ...project.phrasings.map((phrasing) => ({ text: phrasing, rows: [] as PlanRow[] })),
-  ];
+  const byText = new Map<string, Query>();
+  const add = (text: string, row: PlanRow | null) => {
+    const held = byText.get(text) ?? { text, rows: [] as PlanRow[] };
+    if (row) {
+      held.rows.push(row);
+    }
+    byText.set(text, held);
+  };
+  // Two compiled keywords that differ only in a constraint the other also has
+  // split into the same searches, and a query is walked once however many plan
+  // rows it covers. Each row it covers is still credited.
+  for (const row of rows) {
+    for (const text of constraintQueries(row.key)) {
+      add(text, row);
+    }
+  }
+  for (const phrasing of project.phrasings) {
+    add(phrasing, null);
+  }
+  return [...byText.values()];
 }
 
 async function progress(jobId: string | undefined, text: string): Promise<void> {
@@ -109,13 +122,12 @@ export async function runBackfill(projectId: string, jobId?: string): Promise<Ba
   if (!project) {
     throw new Error("This project no longer exists");
   }
-  const { limits } = await tierForUser(project.userId);
   const funded = await clientForUser(project.userId);
-  const ctx: FetchContext = {
-    projectId,
-    funded,
-    maxAgeMs: scanIntervalHours(limits) * HOUR_MS,
-  };
+  // A backfill reuses nothing. A retry exists because the first attempt was
+  // truncated or died, and a cached page from that attempt would hand the retry
+  // the same truncated listing: the 2026-09-10 run served all 532 of its
+  // searches from the cache of earlier failures and so never reached Reddit.
+  const ctx: FetchContext = { projectId, funded, maxAgeMs: 0 };
 
   const queries = queriesOf(project);
   const found = new Map<string, StoredPost>();

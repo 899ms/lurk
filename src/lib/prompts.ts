@@ -139,6 +139,9 @@ For each requirement mark hard or soft, then met, unmet, or unknown by this
 product, and quote the target's own words for it.
 Do not dismiss a central requirement as an optional detail.
 Absence from the product facts means unknown, not automatically unsupported.
+A word the product's own vocabulary uses is not by itself a need. When the
+target's matching words describe something else, name the job they actually
+describe and judge that job, not the product's.
 An explicitly unsupported hard requirement is a disqualifier.
 An unresolved material capability question requires review.
 
@@ -205,6 +208,12 @@ Do not borrow the parent post's buying intent.
 OP follow-up: "We deployed X and it solves this. Thanks."
 Result: resolved; reject from active opportunities.
 Another person's "Try X" alone does not establish resolution.
+
+Product: finds hotels that allow guests under 21 to check in.
+Target: "I'm freshly 20. Looking for an 18+ M or F to come to the concert;
+I'll cover the hotel."
+Result: the age words describe a travel companion, not a check-in policy.
+No relevant need; reject.
 
 Product: supports the requested workflow and constraints.
 Target: "Moving off X this week. Need Y and Z; what should we choose?"

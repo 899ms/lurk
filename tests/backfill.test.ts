@@ -80,6 +80,11 @@ function callsOf(): Call[] {
   }));
 }
 
+/** The cadence each search was allowed to reuse a stored run under. */
+function maxAgesOf(): number[] {
+  return fetchSearch.mock.calls.map((call) => (call[0] as { maxAgeMs: number }).maxAgeMs);
+}
+
 describe.skipIf(!hasDatabase)("runBackfill against a database", () => {
   let db: typeof import("@/db").db;
   let schema: typeof import("@/db/schema");
@@ -172,26 +177,70 @@ describe.skipIf(!hasDatabase)("runBackfill against a database", () => {
     );
   }
 
-  it("stops walking a query when a page carries nothing new", async () => {
+  it("stops walking a query when Reddit stops handing out a cursor", async () => {
     const row = await project();
-    const found = await posts(2);
     pages([
-      { posts: found, nextCursor: "page-2" },
-      { posts: found, nextCursor: "page-3" },
+      { posts: await posts(2), nextCursor: "page-2" },
+      { posts: await posts(1), nextCursor: "page-3" },
       { posts: await posts(1), nextCursor: null },
     ]);
     model();
 
     await runBackfill(row.id);
 
-    // Two pages per sort: the second repeats the first, so the walk ends there.
-    expect(callsOf()).toHaveLength(4);
+    // Three pages per sort, and the third ends the listing.
+    expect(callsOf()).toHaveLength(6);
     expect(callsOf().map((call) => call.cursor)).toEqual([
       undefined,
       "page-2",
+      "page-3",
       undefined,
       "page-2",
+      "page-3",
     ]);
+  });
+
+  it("keeps walking past a page that carried nothing new", async () => {
+    const row = await project();
+    const repeated = await posts(2);
+    const behind = await posts(1);
+    pages([
+      { posts: repeated, nextCursor: "page-2" },
+      // The sparse page Reddit's relevance sort returns mid-listing. Stopping
+      // here is what lost 29 of 48 buyers on 2026-09-10.
+      { posts: [], nextCursor: "page-3" },
+      { posts: behind, nextCursor: null },
+    ]);
+    model();
+
+    await runBackfill(row.id);
+
+    expect(callsOf()).toHaveLength(6);
+    const found = await db().select().from(schema.leads).where(eq(schema.leads.projectId, row.id));
+    expect(found.map((lead) => lead.postId)).toContain(behind[0].id);
+  });
+
+  it("stops walking when the cursor it just followed comes back again", async () => {
+    const row = await project();
+    pages([
+      { posts: await posts(1), nextCursor: "page-2" },
+      { posts: await posts(1), nextCursor: "page-2" },
+    ]);
+    model();
+
+    await runBackfill(row.id);
+
+    expect(callsOf()).toHaveLength(4);
+  });
+
+  it("reuses no cached search, because a retry must not inherit a truncated walk", async () => {
+    const row = await project();
+    pages([{ posts: await posts(1), nextCursor: null }]);
+    model();
+
+    await runBackfill(row.id);
+
+    expect(maxAgesOf()).toEqual([0, 0]);
   });
 
   it("asks both sorts of both the plan's keywords and the problem's phrasings", async () => {
@@ -208,6 +257,28 @@ describe.skipIf(!hasDatabase)("runBackfill against a database", () => {
       "forms that branch | relevance",
     ]);
     expect(callsOf().every((call) => call.timeframe === "year")).toBe(true);
+  });
+
+  it("walks a query once when two keywords compile to it, and credits both", async () => {
+    const row = await project();
+    await db()
+      .insert(schema.projectKeywords)
+      .values([
+        { projectId: row.id, keyword: '(form OR forms) AND (branch OR "conditional logic")' },
+        { projectId: row.id, keyword: "(form OR forms) AND branch" },
+      ]);
+    pages([{ posts: await posts(1), nextCursor: null }]);
+    model();
+
+    await runBackfill(row.id);
+
+    const branch = callsOf().filter((call) => call.query === "(form OR forms) AND branch");
+    expect(branch.map((call) => call.sort).sort()).toEqual(["new", "relevance"]);
+    const covered = await db()
+      .select()
+      .from(schema.projectKeywords)
+      .where(eq(schema.projectKeywords.projectId, row.id));
+    expect(covered.every((keyword) => keyword.lastCoveredAt !== null)).toBe(true);
   });
 
   it("asks a compiled keyword one constraint at a time, so none hides behind the others", async () => {
