@@ -13,7 +13,7 @@ import {
 } from "@/db/schema";
 import { DEFAULT_SCORE_THRESHOLD } from "./scan/constants";
 
-import type { FeedFacets, FeedFilter, LeadCost, ReviewItem } from "./feed";
+import type { FeedFacets, FeedFilter, FeedWindow, LeadCost, ReviewItem } from "./feed";
 
 export type FeedLead = Awaited<ReturnType<typeof listLeads>>[number];
 
@@ -29,6 +29,7 @@ const feedColumns = {
   reason: leads.reason,
   matchedPhrase: leads.matchedPhrase,
   status: leads.status,
+  kind: leads.kind,
   postId: leads.postId,
   title: redditPosts.title,
   subreddit: redditPosts.subreddit,
@@ -75,17 +76,26 @@ function since(days: number): Date {
 /** A comment lead is as old as the comment, never as old as the thread. */
 const NEED_AT = sql`coalesce(${redditComments.createdAt}, ${redditPosts.createdAt})`;
 
-/** Postgres wants the bound date as text when the column is a plain expression. */
-function newerThan(days: number) {
+/**
+ * Postgres wants the bound date as text when the column is a plain expression.
+ * The `all` window is no bound at all, so the backfill's older finds are shown.
+ */
+function newerThan(days: FeedWindow) {
+  if (days === "all") {
+    return undefined;
+  }
   return sql`${NEED_AT} >= ${since(days).toISOString()}::timestamptz`;
 }
 
 /**
  * The project's own minimum score, applied when the feed is read. Moving it on
  * the Product page changes the next page load, with no rescan and nothing
- * deleted, because the judgement and the user's floor are different facts.
+ * deleted, because the judgement and the user's floor are different facts. The
+ * floor is a buyer-quality bar, so a `context` thread - kept for a comment, not
+ * for its buyer intent - is never measured against it; its score is the
+ * intent of someone who is not the buyer, and would always fall short.
  */
-const OVER_THRESHOLD = sql`${leads.score} >= coalesce(${projects.scoreThreshold}, ${DEFAULT_SCORE_THRESHOLD})`;
+const OVER_THRESHOLD = sql`(${leads.kind} = 'context' OR ${leads.score} >= coalesce(${projects.scoreThreshold}, ${DEFAULT_SCORE_THRESHOLD}))`;
 
 /** The feed, best first, for one set of filter pills. */
 export async function listLeads(projectId: string, filter: FeedFilter) {
@@ -97,6 +107,7 @@ export async function listLeads(projectId: string, filter: FeedFilter) {
         eq(leads.status, filter.status),
         OVER_THRESHOLD,
         newerThan(filter.days),
+        filter.kind ? eq(leads.kind, filter.kind) : undefined,
         filter.subreddit ? eq(sql`lower(${redditPosts.subreddit})`, filter.subreddit) : undefined,
         filter.stage ? eq(leads.stage, filter.stage) : undefined,
       ),
@@ -111,7 +122,10 @@ export async function listLeads(projectId: string, filter: FeedFilter) {
  * already a lead for this project is never listed twice: a later rerun holding
  * it does not undo the earlier call.
  */
-export async function listReviewItems(projectId: string, days: number): Promise<ReviewItem[]> {
+export async function listReviewItems(
+  projectId: string,
+  days: FeedWindow,
+): Promise<ReviewItem[]> {
   const rows = await db()
     .select({
       id: leadEvaluations.id,

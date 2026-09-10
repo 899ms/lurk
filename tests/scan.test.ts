@@ -8,7 +8,7 @@ import {
   retrievalBudgets,
 } from "@/lib/scan/constants";
 import { BODY_CHAR_BUDGET, describeItem, truncateBody } from "@/lib/scan/evidence";
-import { judge } from "@/lib/scan/gates";
+import { judge, routeLead } from "@/lib/scan/gates";
 import type { Assessment, ScorableItem, TriageItem } from "@/lib/scan/judgement";
 import { retentionCutoff } from "@/lib/retention";
 import { TIERS } from "@/lib/tiers";
@@ -157,6 +157,24 @@ describe("the qualification gates", () => {
       const judged = judge(assessment({ ...patch, decision: "review" }), item);
       expect(judged.decision).toBe("review");
     }
+  });
+});
+
+describe("routing a judgement to a lane", () => {
+  it("sends a buyer whose open need the product covers to the buyer lane", () => {
+    expect(routeLead(assessment())).toBe("buyer");
+  });
+
+  it("keeps a helper as context when the product plainly does the job", () => {
+    expect(routeLead(assessment({ relationship: "helper", fit: 3 }))).toBe("context");
+  });
+
+  it("drops a helper the product does not do the job for", () => {
+    expect(routeLead(assessment({ relationship: "helper", fit: 1 }))).toBeNull();
+  });
+
+  it("drops a need the person says is already met, however good the fit", () => {
+    expect(routeLead(assessment({ needState: "resolved", fit: 4 }))).toBeNull();
   });
 });
 

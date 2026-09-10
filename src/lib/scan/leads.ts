@@ -2,11 +2,14 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { leads, redditPosts } from "@/db/schema";
 import type { StoredPost } from "@/lib/reddit/store";
+import type { LeadKind } from "./gates";
 
 export type LeadRow = {
   projectId: string;
   postId: string;
   commentId: string | null;
+  /** Which lane the feed shows this in: an ask, or a thread worth a comment. */
+  kind: LeadKind;
   score: number;
   /** The model's 0-4 scales. Null when the evidence could not establish one. */
   fit: number | null;
@@ -35,6 +38,7 @@ export function lastPerKey<T>(rows: T[], key: (row: T) => string): T[] {
 
 /** What a rescore replaces. The user's own status and miss reason are theirs. */
 const REJUDGED = {
+  kind: sql`excluded.kind`,
   score: sql`excluded.score`,
   fit: sql`excluded.fit`,
   intent: sql`excluded.intent`,

@@ -199,6 +199,13 @@ export async function buildProfile(
     projectId,
     new Date(Date.now() + discoveryBudget(limits).refreshDays * DAY_MS),
   );
+  /**
+   * The two jobs that fill the project's first screens: a one-time sweep of a
+   * year of Reddit's own search, then the Google pass that fills the Reddit SEO
+   * tab. Both are queued now, in that order, so neither waits for a person.
+   */
+  await enqueueJob("backfill", projectId);
+  await enqueueJob("seo_refresh", projectId);
   await onStep?.("done");
   return { ...profile, subreddits: resolved };
 }

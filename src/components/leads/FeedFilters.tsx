@@ -6,7 +6,12 @@ import { FEED_WINDOWS, type FeedFacets } from "@/lib/feed";
 
 type FeedFiltersProps = { facets: FeedFacets };
 
-const WINDOW_LABELS: Record<number, string> = { 1: "Today", 7: "7 days", 30: "30 days" };
+const WINDOW_LABELS: Record<string, string> = {
+  1: "Today",
+  7: "7 days",
+  30: "30 days",
+  all: "All time",
+};
 
 const STATUS_LABELS: Record<string, string> = {
   new: "New",

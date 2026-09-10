@@ -54,6 +54,17 @@ describe.skipIf(!hasDatabase)("the feed at read time", () => {
     expect(await listLeads(project.id, { status: "new", days: 30 })).toHaveLength(1);
   });
 
+  it("shows a context lead the score floor would hide, because it is not a buyer", async () => {
+    const { db, schema, project, post } = await fixture(70);
+    const { listLeads } = await import("@/lib/leads");
+    await db()
+      .insert(schema.leads)
+      .values({ projectId: project.id, postId: post.id, score: 40, stage: "none", kind: "context" });
+
+    const shown = await listLeads(project.id, { status: "new", days: "all" });
+    expect(shown.map((lead) => lead.kind)).toEqual(["context"]);
+  });
+
   it("dates a comment lead by the comment, not by the thread it was left in", async () => {
     const { db, schema, project, post } = await fixture(null);
     const { listLeads } = await import("@/lib/leads");
@@ -84,6 +95,32 @@ describe.skipIf(!hasDatabase)("the feed at read time", () => {
     const today = await listLeads(project.id, { status: "new", days: 1 });
     expect(today.map((lead) => lead.commentId)).toEqual([comment.id]);
     expect(await listLeads(project.id, { status: "new", days: 30 })).toHaveLength(2);
+  });
+
+  it("shows what the day windows cut off once the window is all time", async () => {
+    const { db, schema, project, post } = await fixture(null);
+    const { listLeads } = await import("@/lib/leads");
+    const [old] = await db()
+      .insert(schema.redditPosts)
+      .values({
+        id: `p${randomUUID().slice(0, 8)}`,
+        subreddit: "SaaS",
+        author: "asker",
+        title: "Form question from last year",
+        url: "https://www.reddit.com/r/SaaS/comments/y/form/",
+        createdAt: new Date(Date.now() - 300 * DAY_MS),
+      })
+      .returning();
+    await db()
+      .insert(schema.leads)
+      .values([
+        { projectId: project.id, postId: post.id, score: 60, stage: "comparing" },
+        { projectId: project.id, postId: old.id, score: 60, stage: "comparing" },
+      ]);
+
+    expect(await listLeads(project.id, { status: "new", days: 30 })).toHaveLength(1);
+    const everything = await listLeads(project.id, { status: "new", days: "all" });
+    expect(everything.map((lead) => lead.postId).sort()).toEqual([old.id, post.id].sort());
   });
 });
 

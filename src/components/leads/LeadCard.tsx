@@ -12,6 +12,7 @@ import { LeadActions } from "@/components/leads/LeadActions";
 import { PromoPolicyBadge } from "@/components/leads/PromoPolicyBadge";
 import { Meter } from "@/components/leads/Meter";
 import { StageChip } from "@/components/leads/StageChip";
+import { WorthACommentChip } from "@/components/leads/WorthACommentChip";
 import { relativeAge } from "@/lib/format";
 
 export type CardLead = {
@@ -21,6 +22,7 @@ export type CardLead = {
   intent: number | null;
   engagement: number | null;
   stage: string | null;
+  kind: string;
   reason: string | null;
   matchedPhrase: string | null;
   title: string;
@@ -90,6 +92,7 @@ export function LeadCard({ lead, projectId }: LeadCardProps) {
             <SubredditChip name={lead.subreddit} iconUrl={lead.subredditIconUrl} />
             <span className="text-mono text-fg-muted">{relativeAge(lead.createdAt)}</span>
             <StageChip stage={lead.stage} />
+            <WorthACommentChip kind={lead.kind} />
             <ScoreBadge score={lead.score} className="ml-auto" />
           </div>
 

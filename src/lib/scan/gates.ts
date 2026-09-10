@@ -88,6 +88,32 @@ export function decide(item: Assessment): { decision: Decision; reasonCodes: Rea
   return { decision, reasonCodes: withCode(item.reasonCodes, failure) };
 }
 
+/** What a lead is for. A `context` lead is a thread worth a comment, not an ask. */
+export type LeadKind = "buyer" | "context";
+
+/** The gate failures that are still a thread worth commenting in. */
+const CONTEXT_FAILURES: ReasonCode[] = ["seller_only", "helper_only", "no_active_need"];
+
+/**
+ * Where this assessment belongs, or null when it belongs nowhere. A buyer with
+ * an open need the product covers is the feed's own lead. Someone who sells,
+ * someone helping another person, and a thread where nobody asks are not
+ * buyers, but when the product plainly does the job they are talking about
+ * (the same fit floor `wrong_job` uses) a comment there is worth writing. A
+ * settled need, a job the product does not do, and a requirement it cannot
+ * meet stay rejections: there is nothing to say in those threads.
+ */
+export function routeLead(item: Assessment): LeadKind | null {
+  const failure = gateFailure(item);
+  if (decide(item).decision === "qualify") {
+    return "buyer";
+  }
+  if (failure && CONTEXT_FAILURES.includes(failure) && item.fit !== null && item.fit >= 2) {
+    return "context";
+  }
+  return null;
+}
+
 /** Sends an item the evidence does not support to review, never to the feed. */
 export function downgradeToReview(item: Judgement, code: ReasonCode): Judgement {
   if (item.decision === "reject") {

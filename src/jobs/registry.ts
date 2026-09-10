@@ -5,6 +5,7 @@ import { CADENCE_MS } from "@/lib/alerts/select";
 import { runDiscoveryRefresh } from "@/lib/discovery/refresh";
 import { deleteExpiredPosts } from "@/lib/retention";
 import { discoveryBudget } from "@/lib/discovery/run";
+import { runBackfill } from "@/lib/scan/backfill";
 import { runScan } from "@/lib/scan/run";
 import { scanIntervalHours, tierForUser } from "@/lib/tier";
 import { runCompetitorsJob } from "./competitors";
@@ -27,6 +28,19 @@ export const JOB_HANDLERS: Record<string, JobHandler> = {
       throw new Error("A scan job needs a project");
     }
     await runScan(job.projectId, job.id);
+  },
+  /**
+   * The one-time year sweep a new project starts with. It queues nothing after
+   * itself when it finishes: the scan keeps the feed fresh from then on. When
+   * it fails (a model timeout took one live run down mid-triage) it is due
+   * again one scan interval later, like a scan, and resumes from what it
+   * already bought and judged.
+   */
+  backfill: async (job) => {
+    if (!job.projectId) {
+      throw new Error("A backfill needs a project");
+    }
+    await runBackfill(job.projectId, job.id);
   },
   discovery_refresh: async (job) => {
     if (!job.projectId) {
@@ -77,7 +91,7 @@ async function discoveryRefreshDaysFor(projectId: string): Promise<number> {
  */
 export async function nextRunAt(job: Job): Promise<Date | null> {
   const now = Date.now();
-  if (job.kind === "scan" && job.projectId) {
+  if ((job.kind === "scan" || job.kind === "backfill") && job.projectId) {
     return new Date(now + (await scanIntervalHoursFor(job.projectId)) * HOUR_MS);
   }
   if (job.kind === "discovery_refresh" && job.projectId) {

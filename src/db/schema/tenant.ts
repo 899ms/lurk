@@ -215,6 +215,11 @@ export const leads = pgTable(
     stage: text("stage"),
     reason: text("reason"),
     matchedPhrase: text("matched_phrase"),
+    /**
+     * What this lead is for: `buyer` is someone asking for what the product
+     * does, `context` is a thread where nobody asks but a comment belongs.
+     */
+    kind: text("kind").notNull().default("buyer"),
     sellerSide: boolean("seller_side").notNull().default(false),
     status: text("status").notNull().default("new"),
     notFitReason: text("not_fit_reason"),
@@ -222,6 +227,7 @@ export const leads = pgTable(
   },
   (t) => [
     index("leads_project_score_idx").on(t.projectId, t.score.desc()),
+    index("leads_project_kind_idx").on(t.projectId, t.kind),
     uniqueIndex("leads_project_post_idx")
       .on(t.projectId, t.postId)
       .where(sql`${t.commentId} is null`),

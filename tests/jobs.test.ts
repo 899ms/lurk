@@ -175,6 +175,55 @@ describe.skipIf(!process.env.DATABASE_URL)("the job queue against a database", (
     await db().delete(users).where(eq(users.id, user.id));
   });
 
+  it("re-queues a backfill that failed, and never one that finished", async () => {
+    const { db, jobs, users, user, project } = await fixture();
+    const { JOB_HANDLERS } = await import("@/jobs/registry");
+    const { runClaimedJob } = await import("@/jobs/runner");
+    const { and, eq, isNull } = await import("drizzle-orm");
+
+    const original = JOB_HANDLERS.backfill;
+    const selfHosted = process.env.SELF_HOSTED;
+    process.env.SELF_HOSTED = "false";
+    const pendingBackfills = () =>
+      db()
+        .select()
+        .from(jobs)
+        .where(and(eq(jobs.kind, "backfill"), eq(jobs.projectId, project.id), isNull(jobs.startedAt)));
+    try {
+      const [failed] = await db()
+        .insert(jobs)
+        .values({ kind: "backfill", projectId: project.id, runAt: LONG_AGO, startedAt: new Date() })
+        .returning();
+      JOB_HANDLERS.backfill = async () => {
+        throw new Error("The language model did not answer within 3 minutes");
+      };
+      await runClaimedJob(failed);
+      const retried = await pendingBackfills();
+      expect(retried).toHaveLength(1);
+      const waitHours = (retried[0].runAt.getTime() - Date.now()) / (60 * 60 * 1000);
+      expect(waitHours).toBeGreaterThan(5);
+      expect(waitHours).toBeLessThanOrEqual(6);
+      await db().delete(jobs).where(eq(jobs.id, retried[0].id));
+
+      const [done] = await db()
+        .insert(jobs)
+        .values({ kind: "backfill", projectId: project.id, runAt: LONG_AGO, startedAt: new Date() })
+        .returning();
+      JOB_HANDLERS.backfill = async () => {};
+      await runClaimedJob(done);
+      expect(await pendingBackfills()).toHaveLength(0);
+    } finally {
+      JOB_HANDLERS.backfill = original;
+      if (selfHosted === undefined) {
+        delete process.env.SELF_HOSTED;
+      } else {
+        process.env.SELF_HOSTED = selfHosted;
+      }
+    }
+
+    await db().delete(users).where(eq(users.id, user.id));
+  });
+
   it("keeps advancing the lease of a job that is still running", async () => {
     const { db, jobs, users, user, project } = await fixture();
     const { JOB_HANDLERS } = await import("@/jobs/registry");

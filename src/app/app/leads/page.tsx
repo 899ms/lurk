@@ -41,6 +41,7 @@ function toCard(lead: Awaited<ReturnType<typeof listLeads>>[number]): CardLead {
     intent: lead.intent,
     engagement: lead.engagement,
     stage: lead.stage,
+    kind: lead.kind,
     reason: lead.reason,
     matchedPhrase: lead.matchedPhrase,
     title: lead.title,
@@ -76,7 +77,7 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
   }
 
   const status = STATUSES.find((one) => one === params.status) ?? "new";
-  const days = (FEED_WINDOWS.find((one) => String(one) === params.days) ?? 30) as FeedWindow;
+  const days: FeedWindow = FEED_WINDOWS.find((one) => String(one) === params.days) ?? 30;
   const [rows, facets, last, next, review] = await Promise.all([
     listLeads(project.id, { status, days, subreddit: params.subreddit, stage: params.stage }),
     feedFacets(project.id),

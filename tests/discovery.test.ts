@@ -11,6 +11,7 @@ import {
 } from "@/lib/discovery/queries";
 import {
   compileBooleanQuery,
+  constraintQueries,
   competitorsFrom,
   coverageFrom,
   dedupeThreads,
@@ -436,6 +437,20 @@ describe("what the evidence says to search for", () => {
         PRODUCT_NUMBERS,
       ),
     ).toBe('(hotel OR hotels) AND (18 OR 19 OR 20 OR "under 21" OR "check in")');
+  });
+
+  it("splits a compiled search into one search per constraint, scoped or not", () => {
+    expect(constraintQueries('(hotel OR hotels) AND (18 OR "under 21" OR "check in")')).toEqual([
+      "(hotel OR hotels) AND 18",
+      '(hotel OR hotels) AND "under 21"',
+      '(hotel OR hotels) AND "check in"',
+    ]);
+    expect(constraintQueries('subreddit:vegas AND (hotel OR hotels) AND (18 OR "under 21")')).toEqual([
+      "subreddit:vegas AND (hotel OR hotels) AND 18",
+      'subreddit:vegas AND (hotel OR hotels) AND "under 21"',
+    ]);
+    expect(constraintQueries('(hotel OR hotels) AND "under 21"')).toEqual(['(hotel OR hotels) AND "under 21"']);
+    expect(constraintQueries("hotels that allow 18 year olds")).toEqual(["hotels that allow 18 year olds"]);
   });
 
   it("keeps only the numbers the product itself talks about", () => {
