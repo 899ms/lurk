@@ -188,16 +188,13 @@ describe.skipIf(!hasDatabase)("runBackfill against a database", () => {
 
     await runBackfill(row.id);
 
-    // Three pages per sort, and the third ends the listing.
+    // Three pages per sort, and the third ends the listing. The two sorts run
+    // at the same time, so only each one's own order is fixed.
     expect(callsOf()).toHaveLength(6);
-    expect(callsOf().map((call) => call.cursor)).toEqual([
-      undefined,
-      "page-2",
-      "page-3",
-      undefined,
-      "page-2",
-      "page-3",
-    ]);
+    for (const sort of ["relevance", "new"]) {
+      const walked = callsOf().filter((call) => call.sort === sort);
+      expect(walked.map((call) => call.cursor)).toEqual([undefined, "page-2", "page-3"]);
+    }
   });
 
   it("keeps walking past a page that carried nothing new", async () => {
@@ -241,6 +238,28 @@ describe.skipIf(!hasDatabase)("runBackfill against a database", () => {
     await runBackfill(row.id);
 
     expect(maxAgesOf()).toEqual([0, 0]);
+  });
+
+  it("walks queries at once, never more at once than the fetch concurrency", async () => {
+    const row = await project(["forms that branch", "a form that asks one question"]);
+    let live = 0;
+    let peak = 0;
+    fetchSearch.mockImplementation(async () => {
+      live += 1;
+      peak = Math.max(peak, live);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      live -= 1;
+      return { value: { posts: [], nextCursor: null }, reused: false, costUsd: 0 };
+    });
+    model();
+
+    await runBackfill(row.id);
+
+    const { FETCH_CONCURRENCY } = await import("@/lib/scan/constants");
+    // Six walks: three queries in both orders. Sequentially the peak is one.
+    expect(callsOf()).toHaveLength(6);
+    expect(peak).toBeGreaterThan(1);
+    expect(peak).toBeLessThanOrEqual(FETCH_CONCURRENCY);
   });
 
   it("asks both sorts of both the plan's keywords and the problem's phrasings", async () => {

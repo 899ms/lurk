@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { postReadings } from "@/db/schema";
 import { generateStructured } from "@/lib/llm";
 import { READING_SYSTEM } from "@/lib/prompts";
+import { FETCH_CONCURRENCY } from "./constants";
 import { contentHash } from "./evaluations";
 import { isSentinel } from "./evidence";
 import { judge } from "./gates";
@@ -40,12 +41,6 @@ export const READING_VERSION = "2026-09-07.1";
 
 /** The most characters of one body the reading sees, as measured. */
 const READING_CHAR_BUDGET = 6000;
-
-/**
- * How many readings run at once. The measured run read 540 posts ten at a time
- * without a failure, so ten is what the evidence covers.
- */
-const READING_CONCURRENCY = 10;
 
 /** The hash of the post's own words. Replies do not change who is speaking. */
 export function readingHash(title: string, body: string | null): string {
@@ -139,8 +134,8 @@ export async function readPosts(
   const live = items.filter((item) => !isSentinel(item));
   const readings = await cached(live);
   const todo = live.filter((item) => !readings.has(item.id));
-  for (let start = 0; start < todo.length; start += READING_CONCURRENCY) {
-    const batch = todo.slice(start, start + READING_CONCURRENCY);
+  for (let start = 0; start < todo.length; start += FETCH_CONCURRENCY) {
+    const batch = todo.slice(start, start + FETCH_CONCURRENCY);
     const done = await Promise.all(batch.map((item) => readOne(projectId, item)));
     batch.forEach((item, index) => {
       const reading = done[index];

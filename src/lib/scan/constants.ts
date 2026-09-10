@@ -13,6 +13,14 @@ export const DEFAULT_SCORE_THRESHOLD = 50;
 export const SCORE_BATCH_SIZE = 10;
 
 /**
+ * How many AnyAPI reads one job runs at once. The measured run read 540 posts
+ * ten at a time without a failure, so ten is what the evidence covers. The
+ * backfill's walks use the same number for the same reason: they are the same
+ * kind of call from the same process.
+ */
+export const FETCH_CONCURRENCY = 10;
+
+/**
  * How many titles one triage call reads at a time. The saved runs in
  * .context/reddit-leads-proof/scorer-pass.md and scorer-pass-2.md triaged 70,
  * 77 and 78 titles in a single call and each came back complete, so 70 is the

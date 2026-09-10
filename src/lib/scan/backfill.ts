@@ -4,6 +4,7 @@ import type { FetchContext } from "@/lib/reddit/fetch";
 import { fetchSearch } from "@/lib/reddit/skus";
 import { asRawPost, upsertPosts, type StoredPost } from "@/lib/reddit/store";
 import { constraintQueries } from "@/lib/discovery/rank";
+import { FETCH_CONCURRENCY } from "./constants";
 import { retrieved, type PlanRow } from "./coverage";
 import { loadEvaluations, writeEvaluations } from "./evaluations";
 import { writeLeads } from "./leads";
@@ -132,14 +133,25 @@ export async function runBackfill(projectId: string, jobId?: string): Promise<Ba
   const queries = queriesOf(project);
   const found = new Map<string, StoredPost>();
   const sourcesByPost = new Map<string, CandidateSource[]>();
+  // Every walk is independent of every other, and a walk is nearly all waiting
+  // on Reddit. Run them the same number at a time the reading pass does, or a
+  // first sweep makes its user wait an hour for a feed.
+  const plan = queries.flatMap((query) => SORTS.map((sort) => ({ query, sort })));
   let walks = 0;
-  for (const query of queries) {
-    for (const sort of SORTS) {
-      await progress(jobId, `Searching a year of "${query.text}"`);
-      await walk(ctx, query, sort, found, sourcesByPost);
+  const next = async (): Promise<void> => {
+    for (;;) {
+      const item = plan[walks];
+      if (!item) {
+        return;
+      }
       walks += 1;
+      await progress(jobId, `Searching a year of "${item.query.text}"`);
+      await walk(ctx, item.query, item.sort, found, sourcesByPost);
     }
-  }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(FETCH_CONCURRENCY, plan.length) }, () => next()),
+  );
 
   // Retention can delete an unreferenced post while this sweep still holds it,
   // so re-persist everything found before pointing a source or a lead at it.
