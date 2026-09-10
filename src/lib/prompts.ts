@@ -69,7 +69,8 @@ For every supplied candidate ID, return exactly one result:
 - reasonCode: explicit_ask, relevant_pain, switching,
   insufficient_context, wrong_topic, seller_only, helper_only,
   no_active_need, or unavailable
-- reason: one short evidence-grounded sentence
+
+Return the three fields and nothing else. Do not explain a verdict in prose.
 
 READ: the target appears to seek a solution, evaluate alternatives, or describe
 a relevant unresolved job or workaround.

@@ -7,9 +7,10 @@ import { constraintQueries } from "@/lib/discovery/rank";
 import { CALL_CONCURRENCY } from "./constants";
 import { retrieved, type PlanRow } from "./coverage";
 import { loadEvaluations, writeEvaluations } from "./evaluations";
-import { writeLeads } from "./leads";
+import { writeLeads, type LeadRow } from "./leads";
 import { loadScanProject, type ScanProject } from "./project";
 import { evaluationsFor, postItem, routed, toLead, unjudged } from "./run";
+import type { Judgement } from "./judgement";
 import { judgeItems, readOrder, triageTitles } from "./score";
 import { creditSources, markCovered, recordSources, type CandidateSource } from "./sources";
 
@@ -187,13 +188,37 @@ export async function runBackfill(projectId: string, jobId?: string): Promise<Ba
     .map((id) => byId.get(id))
     .filter((post): post is StoredPost => post !== undefined);
 
+  // Every batch of verdicts is committed the moment it lands, so the feed fills
+  // while the sweep is still running instead of staying empty for the whole of
+  // it: the 2026-09-10 re-run judged for seven minutes after nine of triage and
+  // showed nothing until the last of them. A batch whose commit fails is not
+  // lost either, because the sweep writes whatever is still uncommitted at the
+  // end from the list judgeItems returns.
   await progress(jobId, `Scoring ${ordered.length} posts`);
-  const judgements = await judgeItems(projectId, project.productText, ordered.map(postItem));
-  await writeEvaluations(await evaluationsFor(project, candidates, judgements));
-  const leads = routed(judgements.map((judgement) => ({ judgement }))).map((item) =>
-    toLead(project, item.judgement, item.judgement.id, null, item.kind),
+  const leads: LeadRow[] = [];
+  const committed = new Set<string>();
+  const commit = async (batch: Judgement[]): Promise<void> => {
+    await writeEvaluations(await evaluationsFor(project, candidates, batch));
+    const written = routed(batch.map((judgement) => ({ judgement }))).map((item) =>
+      toLead(project, item.judgement, item.judgement.id, null, item.kind),
+    );
+    await writeLeads(written);
+    leads.push(...written);
+    for (const judgement of batch) {
+      committed.add(judgement.id);
+    }
+    await progress(jobId, `Scored ${committed.size} of ${ordered.length} posts`);
+  };
+  const judgements = await judgeItems(
+    projectId,
+    project.productText,
+    ordered.map(postItem),
+    commit,
   );
-  await writeLeads(leads);
+  const uncommitted = judgements.filter((judgement) => !committed.has(judgement.id));
+  if (uncommitted.length > 0) {
+    await commit(uncommitted);
+  }
   await creditSources(
     sourcesByPost,
     ordered.map((post) => post.id),

@@ -6,6 +6,12 @@ import { z } from "zod";
  * result and the code that asks for one do not import each other.
  */
 
+/**
+ * Triage carries no free-text reason. Nothing reads one: the disposition and
+ * the code decide the reading order, and the judgement that follows writes the
+ * sentence a person sees. Measured 2026-09-10, a sentence per title was most of
+ * the 749k output tokens the 4,295-title sweep spent in its slowest phase.
+ */
 export const triageItemSchema = z.object({
   id: z.string(),
   disposition: z.enum(["read", "uncertain", "reject"]),
@@ -21,7 +27,6 @@ export const triageItemSchema = z.object({
     "no_active_need",
     "unavailable",
   ]),
-  reason: z.string(),
 });
 
 export const triageSchema = z.object({ items: z.array(triageItemSchema) });

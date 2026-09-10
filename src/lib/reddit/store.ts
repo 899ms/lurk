@@ -100,13 +100,27 @@ export function asRawPost(post: StoredPost): RawPost {
   };
 }
 
+/**
+ * Stores a page of posts, and hands them back in the order they arrived in,
+ * because a run's stored ranking is that order.
+ *
+ * The rows go to Postgres sorted by id. Two concurrent walks land on the same
+ * post in different orders, and an upsert takes its index locks row by row in
+ * the order the statement lists them: a sweep of 2026-09-10 deadlocked two of
+ * its ten walks against each other and died. Sorting means every statement in
+ * the process asks for the same rows in the same order, which is the ordering
+ * that makes a deadlock impossible rather than unlikely.
+ */
 export async function upsertPosts(posts: RawPost[]): Promise<StoredPost[]> {
   if (posts.length === 0) {
     return [];
   }
-  return db()
+  const values = posts.map(postValues);
+  const order = new Map(values.map((row, index) => [row.id, index]));
+  const sorted = [...values].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const stored = await db()
     .insert(redditPosts)
-    .values(posts.map(postValues))
+    .values(sorted)
     .onConflictDoUpdate({
       target: redditPosts.id,
       set: {
@@ -120,6 +134,9 @@ export async function upsertPosts(posts: RawPost[]): Promise<StoredPost[]> {
       },
     })
     .returning();
+  return stored.sort(
+    (a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0),
+  );
 }
 
 /** Records which posts a run produced, in the order the upstream ranked them. */

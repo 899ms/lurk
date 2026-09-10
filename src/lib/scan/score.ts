@@ -1,6 +1,6 @@
 import { generateStructured } from "@/lib/llm";
 import { JUDGEMENT_SYSTEM, TRIAGE_SYSTEM } from "@/lib/prompts";
-import { SCORE_BATCH_SIZE, TRIAGE_BATCH_SIZE, inFlight } from "./constants";
+import { MODEL_CONCURRENCY, SCORE_BATCH_SIZE, TRIAGE_BATCH_SIZE, inFlight } from "./constants";
 import { describeCandidate, describeItem, isSentinel } from "./evidence";
 import { judge } from "./gates";
 import {
@@ -25,7 +25,6 @@ function unevaluated(id: string): TriageItem {
     disposition: "uncertain",
     priority: "low",
     reasonCode: "insufficient_context",
-    reason: "The triage returned no verdict for this candidate.",
   };
 }
 
@@ -78,7 +77,7 @@ export async function triageTitles(
       // dropped connection lost a whole sweep's triage on 2026-09-10.
       return batch.map((candidate) => unevaluated(candidate.id));
     }
-  });
+  }, MODEL_CONCURRENCY);
   return done.flat();
 }
 
@@ -154,6 +153,14 @@ async function judgeBatch(
 }
 
 /**
+ * Called with each batch of verdicts the moment it lands, so a caller can
+ * commit them while the rest of the run is still going. A first sweep judges
+ * for several minutes, and a feed that fills as it goes is the difference
+ * between waiting and reading.
+ */
+export type OnJudged = (batch: Judgement[]) => Promise<void>;
+
+/**
  * Judges items in batches. Every answer is checked against the batch it came
  * from and against the text it was shown: a foreign id is dropped, an id the
  * model skipped is asked for once more and otherwise left unevaluated, and a
@@ -164,6 +171,7 @@ export async function judgeItems(
   projectId: string,
   product: ProfileText,
   items: ScorableItem[],
+  onJudged?: OnJudged,
 ): Promise<Judgement[]> {
   const live = items.filter((item) => !isSentinel(item));
   const batches: ScorableItem[][] = [];
@@ -180,10 +188,20 @@ export async function judgeItems(
       // ten is not a reason to lose the other thousand.
       return [];
     }
-    return assessments.map((assessment) => {
+    const judged = assessments.map((assessment) => {
       const source = bySource.get(assessment.id) as ScorableItem;
       return withCheckedEvidence(judge(assessment, source), source);
     });
-  });
+    if (onJudged) {
+      // A failed commit of ten must not lose the other batches' verdicts, for
+      // the same reason a dropped model call does not lose the sweep.
+      try {
+        await onJudged(judged);
+      } catch {
+        // The caller writes again from the returned list when the run ends.
+      }
+    }
+    return judged;
+  }, MODEL_CONCURRENCY);
   return done.flat();
 }

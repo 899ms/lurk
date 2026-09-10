@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { postReadings } from "@/db/schema";
 import { generateStructured } from "@/lib/llm";
 import { READING_SYSTEM } from "@/lib/prompts";
-import { CALL_CONCURRENCY } from "./constants";
+import { MODEL_CONCURRENCY } from "./constants";
 import { contentHash } from "./evaluations";
 import { isSentinel } from "./evidence";
 import { judge } from "./gates";
@@ -134,8 +134,8 @@ export async function readPosts(
   const live = items.filter((item) => !isSentinel(item));
   const readings = await cached(live);
   const todo = live.filter((item) => !readings.has(item.id));
-  for (let start = 0; start < todo.length; start += CALL_CONCURRENCY) {
-    const batch = todo.slice(start, start + CALL_CONCURRENCY);
+  for (let start = 0; start < todo.length; start += MODEL_CONCURRENCY) {
+    const batch = todo.slice(start, start + MODEL_CONCURRENCY);
     const done = await Promise.all(batch.map((item) => readOne(projectId, item)));
     batch.forEach((item, index) => {
       const reading = done[index];

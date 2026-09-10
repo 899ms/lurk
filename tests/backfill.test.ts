@@ -156,7 +156,6 @@ describe.skipIf(!hasDatabase)("runBackfill against a database", () => {
             disposition: "read",
             priority: "medium",
             reasonCode: "explicit_ask",
-            reason: "asks for a form tool",
           })),
         };
       }
@@ -260,6 +259,55 @@ describe.skipIf(!hasDatabase)("runBackfill against a database", () => {
     expect(callsOf()).toHaveLength(6);
     expect(peak).toBeGreaterThan(1);
     expect(peak).toBeLessThanOrEqual(CALL_CONCURRENCY);
+  });
+
+  /**
+   * A first sweep judges for minutes. Holding every verdict until the last
+   * batch left the feed empty for the whole of the 2026-09-10 re-run, so a
+   * batch's leads are written the moment that batch is judged. One batch is
+   * held open here while the others land: without the per-batch commit no lead
+   * exists until every batch is done, and this waits out its whole budget.
+   */
+  it("writes a batch's leads while it is still judging the rest", async () => {
+    const { SCORE_BATCH_SIZE } = await import("@/lib/scan/constants");
+    const row = await project();
+    pages([{ posts: await posts(SCORE_BATCH_SIZE * 3), nextCursor: null }]);
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let scoringCalls = 0;
+    generateStructured.mockImplementation(async (input: { purpose: string; prompt: string }) => {
+      if (input.purpose === "triage") {
+        return {
+          items: idsIn(input.prompt).map((id) => ({
+            id,
+            disposition: "read",
+            priority: "medium",
+            reasonCode: "explicit_ask",
+          })),
+        };
+      }
+      scoringCalls += 1;
+      if (scoringCalls === 1) {
+        await held;
+      }
+      return { items: idsIn(input.prompt).map((id) => assessment(id)) };
+    });
+
+    const sweep = runBackfill(row.id);
+    let midRun = 0;
+    for (let tries = 0; tries < 100 && midRun === 0; tries += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      midRun = (
+        await db().select().from(schema.leads).where(eq(schema.leads.projectId, row.id))
+      ).length;
+    }
+    release();
+    await sweep;
+
+    // Two batches were in the feed while the third had not answered yet.
+    expect(midRun).toBe(SCORE_BATCH_SIZE * 2);
   });
 
   it("asks both sorts of both the plan's keywords and the problem's phrasings", async () => {

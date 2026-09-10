@@ -1,44 +1,38 @@
 import type { CardLead } from "@/components/leads/LeadCard";
-import type { ReviewItem } from "@/lib/feed";
 
-/** One thing in the single stream: a scored lead, or an item the scan held. */
-export type StreamEntry =
-  | { kind: "lead"; id: string; at: Date; lead: CardLead }
-  | { kind: "held"; id: string; at: Date; item: ReviewItem };
+/** One thing in the feed: a lead the gates qualified. Nothing else. */
+export type StreamEntry = { id: string; at: Date; lead: CardLead };
 
 /** A run of entries that were posted on the same calendar day. */
 export type StreamDay = { day: number; label: string; entries: StreamEntry[] };
 
 /**
- * Everything the scan surfaced, newest first. A lead and a held item posted at
- * the same moment put the lead first, so a new lead still opens the stream.
+ * The leads this project holds, best first, in the order the feed query gave
+ * them: score, then how recently the need was posted. Freshness is already
+ * half of that score, so sorting the stream by date on top of it threw fit and
+ * intent away and opened the feed with whatever was newest. On 2026-09-10 that
+ * was two crossposts of one person recruiting festival companions.
+ *
+ * Held candidates are deliberately not here either: they are the pile the scan
+ * would not call either way, and four of them, warm-badged, sat above the first
+ * real lead. They have their own section under the feed instead.
  */
-export function buildStream(cards: CardLead[], review: ReviewItem[]): StreamEntry[] {
-  const entries: StreamEntry[] = [
-    ...cards.map(
-      (lead): StreamEntry => ({ kind: "lead", id: `lead-${lead.id}`, at: lead.createdAt, lead }),
-    ),
-    ...review.map(
-      (item): StreamEntry => ({ kind: "held", id: `held-${item.id}`, at: item.createdAt, item }),
-    ),
-  ];
-  return entries.sort((a, b) => {
-    const byTime = b.at.getTime() - a.at.getTime();
-    if (byTime !== 0) {
-      return byTime;
-    }
-    return (a.kind === "lead" ? 0 : 1) - (b.kind === "lead" ? 0 : 1);
-  });
+export function buildStream(cards: CardLead[]): StreamEntry[] {
+  return cards.map((lead): StreamEntry => ({ id: `lead-${lead.id}`, at: lead.createdAt, lead }));
 }
 
 function startOfDay(date: Date): number {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
 }
 
-/** The same entries bucketed into days, newest day first, for the people strip. */
+/**
+ * The same entries bucketed into days, newest day first, for the people strip.
+ * The strip is a calendar, so it sorts by date whatever order the feed is in.
+ */
 export function groupByDay(entries: StreamEntry[]): StreamDay[] {
   const days: StreamDay[] = [];
-  for (const entry of entries) {
+  const byDate = [...entries].sort((a, b) => b.at.getTime() - a.at.getTime());
+  for (const entry of byDate) {
     const day = startOfDay(entry.at);
     const last = days.at(-1);
     if (last && last.day === day) {

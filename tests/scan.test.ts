@@ -392,7 +392,6 @@ describe("triage", () => {
       disposition: "read" as const,
       priority,
       reasonCode: "relevant_pain" as const,
-      reason: id,
     });
     const last = `p${TRIAGE_BATCH_SIZE - 1}`;
     const first = `p${TRIAGE_BATCH_SIZE}`;
@@ -425,8 +424,8 @@ describe("triage", () => {
 
   it("reads the uncertain, never the rejected", () => {
     const triage: TriageItem[] = [
-      { id: "a", disposition: "reject", priority: "high", reasonCode: "wrong_topic", reason: "a" },
-      { id: "b", disposition: "uncertain", priority: "low", reasonCode: "insufficient_context", reason: "b" },
+      { id: "a", disposition: "reject", priority: "high", reasonCode: "wrong_topic" },
+      { id: "b", disposition: "uncertain", priority: "low", reasonCode: "insufficient_context" },
     ];
     expect(readOrder(triage, new Map())).toEqual(["b"]);
   });

@@ -49,3 +49,31 @@ describe.skipIf(!process.env.DATABASE_URL)("storing a search result", () => {
     expect(stored.bodyObservedAt).toBeNull();
   });
 });
+
+/**
+ * The rows are written in id order so two concurrent walks cannot deadlock on
+ * the same post, and a deadlock is exactly what killed a sweep on 2026-09-10.
+ * The ranking a run stores is the order upstream returned, so the caller must
+ * still get that order back.
+ */
+describe.skipIf(!process.env.DATABASE_URL)("the order posts are stored in", () => {
+  it("returns them as upstream ranked them, whatever order they are written in", async () => {
+    process.env.APP_ENCRYPTION_KEY ??= Buffer.alloc(32).toString("base64");
+    const { upsertPosts } = await import("@/lib/reddit/store");
+    const suffix = randomUUID().slice(0, 8);
+    // Ranked z, a, m: the reverse of the order the statement lists them in.
+    const ranked = ["z", "a", "m"].map((letter, index) => ({
+      id: `t3_${letter}${suffix}`,
+      subreddit: "discgolf",
+      author: "asker",
+      title: `Ranked ${index}`,
+      selftext: "",
+      permalink: `/r/discgolf/comments/${letter}${suffix}/ranked/`,
+      createdUtc: Math.floor(Date.now() / 1000),
+    }));
+
+    const stored = await upsertPosts(ranked);
+
+    expect(stored.map((post) => post.id)).toEqual([`z${suffix}`, `a${suffix}`, `m${suffix}`]);
+  });
+});

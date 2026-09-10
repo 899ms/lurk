@@ -1,6 +1,6 @@
 import { EmptyState } from "@/components/EmptyState";
 import { FeedFilters } from "@/components/leads/FeedFilters";
-import { HeldCard } from "@/components/leads/HeldCard";
+import { HeldSection } from "@/components/leads/HeldSection";
 import { LeadCard, type CardLead } from "@/components/leads/LeadCard";
 import { PeopleStrip } from "@/components/leads/PeopleStrip";
 import { ScanStatus } from "@/components/leads/ScanStatus";
@@ -85,7 +85,8 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
     nextScanJob(project.id),
     listReviewItems(project.id, days),
   ]);
-  const entries = buildStream(rows.map(toCard), status === "new" ? review : []);
+  const entries = buildStream(rows.map(toCard));
+  const held = status === "new" ? review : [];
 
   return (
     <div className="flex flex-col gap-5">
@@ -108,15 +109,12 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
         <EmptyState title="Nothing here" sentence={EMPTY_SENTENCE[status]} />
       ) : (
         <div className="flex flex-col gap-3">
-          {entries.map((entry) =>
-            entry.kind === "lead" ? (
-              <LeadCard key={entry.id} lead={entry.lead} projectId={project.id} />
-            ) : (
-              <HeldCard key={entry.id} item={entry.item} />
-            ),
-          )}
+          {entries.map((entry) => (
+            <LeadCard key={entry.id} lead={entry.lead} projectId={project.id} />
+          ))}
         </div>
       )}
+      {held.length > 0 ? <HeldSection items={held} /> : null}
     </div>
   );
 }

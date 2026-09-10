@@ -198,7 +198,6 @@ describe.skipIf(!hasDatabase)("runScan against a database", () => {
             disposition: "read",
             priority: index === 0 ? "high" : "medium",
             reasonCode: "explicit_ask",
-            reason: "asks for a form tool",
           })),
         };
       }
@@ -539,7 +538,6 @@ describe.skipIf(!hasDatabase)("runScan against a database", () => {
             disposition: "read",
             priority: "medium",
             reasonCode: "explicit_ask",
-            reason: "asks for a form tool",
           })),
         };
       }
