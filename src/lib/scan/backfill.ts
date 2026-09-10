@@ -4,7 +4,7 @@ import type { FetchContext } from "@/lib/reddit/fetch";
 import { fetchSearch } from "@/lib/reddit/skus";
 import { asRawPost, upsertPosts, type StoredPost } from "@/lib/reddit/store";
 import { constraintQueries } from "@/lib/discovery/rank";
-import { FETCH_CONCURRENCY } from "./constants";
+import { CALL_CONCURRENCY } from "./constants";
 import { retrieved, type PlanRow } from "./coverage";
 import { loadEvaluations, writeEvaluations } from "./evaluations";
 import { writeLeads } from "./leads";
@@ -150,7 +150,7 @@ export async function runBackfill(projectId: string, jobId?: string): Promise<Ba
     }
   };
   await Promise.all(
-    Array.from({ length: Math.min(FETCH_CONCURRENCY, plan.length) }, () => next()),
+    Array.from({ length: Math.min(CALL_CONCURRENCY, plan.length) }, () => next()),
   );
 
   // Retention can delete an unreferenced post while this sweep still holds it,

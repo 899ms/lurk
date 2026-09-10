@@ -255,11 +255,11 @@ describe.skipIf(!hasDatabase)("runBackfill against a database", () => {
 
     await runBackfill(row.id);
 
-    const { FETCH_CONCURRENCY } = await import("@/lib/scan/constants");
+    const { CALL_CONCURRENCY } = await import("@/lib/scan/constants");
     // Six walks: three queries in both orders. Sequentially the peak is one.
     expect(callsOf()).toHaveLength(6);
     expect(peak).toBeGreaterThan(1);
-    expect(peak).toBeLessThanOrEqual(FETCH_CONCURRENCY);
+    expect(peak).toBeLessThanOrEqual(CALL_CONCURRENCY);
   });
 
   it("asks both sorts of both the plan's keywords and the problem's phrasings", async () => {

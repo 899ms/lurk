@@ -1,6 +1,6 @@
 import { generateStructured } from "@/lib/llm";
 import { JUDGEMENT_SYSTEM, TRIAGE_SYSTEM } from "@/lib/prompts";
-import { SCORE_BATCH_SIZE, TRIAGE_BATCH_SIZE } from "./constants";
+import { SCORE_BATCH_SIZE, TRIAGE_BATCH_SIZE, inFlight } from "./constants";
 import { describeCandidate, describeItem, isSentinel } from "./evidence";
 import { judge } from "./gates";
 import {
@@ -65,13 +65,21 @@ export async function triageTitles(
   product: ProfileText,
   candidates: TriageCandidate[],
 ): Promise<TriageItem[]> {
-  const out: TriageItem[] = [];
+  const batches: TriageCandidate[][] = [];
   for (let start = 0; start < candidates.length; start += TRIAGE_BATCH_SIZE) {
-    out.push(
-      ...(await triageBatch(projectId, product, candidates.slice(start, start + TRIAGE_BATCH_SIZE))),
-    );
+    batches.push(candidates.slice(start, start + TRIAGE_BATCH_SIZE));
   }
-  return out;
+  const done = await inFlight(batches, async (batch) => {
+    try {
+      return await triageBatch(projectId, product, batch);
+    } catch {
+      // A batch the model never answered is the same thing as a batch it
+      // answered with nothing: those candidates are unread, not rejected. One
+      // dropped connection lost a whole sweep's triage on 2026-09-10.
+      return batch.map((candidate) => unevaluated(candidate.id));
+    }
+  });
+  return done.flat();
 }
 
 /** What a candidate's own facts say about how urgent reading it is. */
@@ -158,14 +166,24 @@ export async function judgeItems(
   items: ScorableItem[],
 ): Promise<Judgement[]> {
   const live = items.filter((item) => !isSentinel(item));
-  const out: Judgement[] = [];
+  const batches: ScorableItem[][] = [];
   for (let start = 0; start < live.length; start += SCORE_BATCH_SIZE) {
-    const batch = live.slice(start, start + SCORE_BATCH_SIZE);
-    const bySource = new Map(batch.map((item) => [item.id, item]));
-    for (const assessment of await judgeBatch(projectId, product, batch)) {
-      const source = bySource.get(assessment.id) as ScorableItem;
-      out.push(withCheckedEvidence(judge(assessment, source), source));
-    }
+    batches.push(live.slice(start, start + SCORE_BATCH_SIZE));
   }
-  return out;
+  const done = await inFlight(batches, async (batch) => {
+    const bySource = new Map(batch.map((item) => [item.id, item]));
+    let assessments: Assessment[];
+    try {
+      assessments = await judgeBatch(projectId, product, batch);
+    } catch {
+      // These ten keep no verdict, so the next run judges them again. Losing
+      // ten is not a reason to lose the other thousand.
+      return [];
+    }
+    return assessments.map((assessment) => {
+      const source = bySource.get(assessment.id) as ScorableItem;
+      return withCheckedEvidence(judge(assessment, source), source);
+    });
+  });
+  return done.flat();
 }

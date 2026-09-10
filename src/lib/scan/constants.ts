@@ -13,12 +13,33 @@ export const DEFAULT_SCORE_THRESHOLD = 50;
 export const SCORE_BATCH_SIZE = 10;
 
 /**
- * How many AnyAPI reads one job runs at once. The measured run read 540 posts
- * ten at a time without a failure, so ten is what the evidence covers. The
- * backfill's walks use the same number for the same reason: they are the same
- * kind of call from the same process.
+ * How many outbound calls one job has in flight at once, whether it is reading
+ * posts, walking a search, or asking the model about a batch. The measured run
+ * read 540 posts ten at a time without a failure, so ten is what the evidence
+ * covers, and the other three are the same kind of wait from the same process.
  */
-export const FETCH_CONCURRENCY = 10;
+export const CALL_CONCURRENCY = 10;
+
+/** Runs `work` over `items`, CALL_CONCURRENCY at a time, in the input order. */
+export async function inFlight<T, R>(
+  items: T[],
+  work: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    for (;;) {
+      const index = next;
+      if (index >= items.length) {
+        return;
+      }
+      next += 1;
+      out[index] = await work(items[index]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(CALL_CONCURRENCY, items.length) }, worker));
+  return out;
+}
 
 /**
  * How many titles one triage call reads at a time. The saved runs in
