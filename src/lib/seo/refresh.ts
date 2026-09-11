@@ -9,6 +9,7 @@ import { competitorNamed } from "./competitors";
 import { fetchKeywordVolumes, fetchRankingThreads } from "./fetch";
 import { seoSettings } from "./limits";
 import { writeOpportunities, type OpportunityRow } from "./opportunities";
+import { NO_PHRASINGS_PROGRESS } from "./read";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -88,7 +89,7 @@ export async function runSeoRefresh(
   const settings = seoSettings(limits, project.phrasings);
   const maxAgeMs = settings.refreshDays * DAY_MS;
   if (settings.phrasings.length === 0) {
-    await writeProgress(jobId, "No problem phrasings to look up yet");
+    await writeProgress(jobId, NO_PHRASINGS_PROGRESS);
     await enqueueJob("seo_refresh", projectId, new Date(Date.now() + maxAgeMs));
     return { phrasings: 0, threads: 0, costUsd: 0 };
   }

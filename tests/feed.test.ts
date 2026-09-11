@@ -118,14 +118,15 @@ describe.skipIf(!hasDatabase)("the feed at read time", () => {
         { projectId: project.id, postId: other.id, score: 60, stage: "comparing" },
       ])
       .returning();
-    await db()
+    const [theme] = await db()
       .insert(schema.painThemes)
-      .values({ projectId: project.id, label: "prefilled forms", leadIds: [held[0].id] });
+      .values({ projectId: project.id, label: "prefilled forms", leadIds: [held[0].id] })
+      .returning();
 
     const themed = await listLeads(project.id, {
       status: "new",
       days: "all",
-      theme: "prefilled forms",
+      theme: theme.id,
     });
     expect(themed.map((lead) => lead.id)).toEqual([held[0].id]);
     expect(await listLeads(project.id, { status: "new", days: "all" })).toHaveLength(2);

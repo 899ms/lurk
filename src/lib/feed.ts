@@ -25,7 +25,7 @@ export type FeedFilter = {
   kind?: LeadKind;
   subreddit?: string;
   stage?: string;
-  /** One Insights theme's label, narrowing the feed to the leads it holds. */
+  /** One Insights theme's id, narrowing the feed to the leads that theme holds. */
   theme?: string;
 };
 

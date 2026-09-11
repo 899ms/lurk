@@ -2,14 +2,21 @@ import { refreshSeoAction } from "@/app/app/seo/actions";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { KeywordSection } from "@/components/seo/KeywordSection";
+import { NoPhrasings } from "@/components/seo/NoPhrasings";
 import type { RankingThread } from "@/components/seo/OpportunityCard";
 import { RefreshStatus } from "@/components/seo/RefreshStatus";
 import { SeoFilters } from "@/components/seo/SeoFilters";
-import { lastRunJob } from "@/jobs/enqueue";
+import { lastRunJob, nextQueuedJob } from "@/jobs/enqueue";
 import { requireLocalUser } from "@/lib/auth";
 import { activeProject } from "@/lib/projects";
 import { normalizeQuery } from "@/lib/reddit/fetch";
-import { listOpportunities, seoFacets, volumesFor, type SeoRow } from "@/lib/seo/read";
+import {
+  listOpportunities,
+  NO_PHRASINGS_PROGRESS,
+  seoFacets,
+  volumesFor,
+  type SeoRow,
+} from "@/lib/seo/read";
 
 type SeoPageProps = {
   searchParams: Promise<{
@@ -61,7 +68,7 @@ export default async function SeoPage({ searchParams }: SeoPageProps) {
     );
   }
 
-  const [rows, facets, job] = await Promise.all([
+  const [rows, facets, last, next] = await Promise.all([
     listOpportunities(project.id, {
       keyword: params.keyword,
       subreddit: params.subreddit,
@@ -69,7 +76,9 @@ export default async function SeoPage({ searchParams }: SeoPageProps) {
     }),
     seoFacets(project.id),
     lastRunJob("seo_refresh", project.id),
+    nextQueuedJob("seo_refresh", project.id),
   ]);
+  const nothingToLookUp = Boolean(last?.finishedAt) && last?.progress === NO_PHRASINGS_PROGRESS;
   const grouped = byPhrasing(rows);
   const phrasings = [...grouped.keys()];
   const volumes = await volumesFor(phrasings);
@@ -81,7 +90,7 @@ export default async function SeoPage({ searchParams }: SeoPageProps) {
           <h2 className="text-h2" style={{ fontWeight: 500 }}>
             Reddit SEO
           </h2>
-          <RefreshStatus job={job} />
+          <RefreshStatus last={last} next={next} />
         </div>
         <form action={refreshSeoAction.bind(null, project.id)}>
           <Button type="submit" size="lg">
@@ -91,7 +100,11 @@ export default async function SeoPage({ searchParams }: SeoPageProps) {
       </div>
       <SeoFilters facets={facets} />
       {phrasings.length === 0 ? (
-        <EmptyState title="Nothing ranked yet" sentence={EMPTY_SENTENCE} />
+        nothingToLookUp ? (
+          <NoPhrasings projectId={project.id} />
+        ) : (
+          <EmptyState title="Nothing ranked yet" sentence={EMPTY_SENTENCE} />
+        )
       ) : (
         <div className="flex flex-col gap-6">
           {phrasings.map((phrasing) => (

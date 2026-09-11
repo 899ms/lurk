@@ -104,12 +104,14 @@ const OVER_THRESHOLD = sql`(${leads.kind} = 'context' OR ${leads.score} >= coale
 /**
  * The lead ids one Insights theme holds. The theme owns the list, so narrowing
  * the feed to a theme is a membership test against that row and not a rescore.
+ * The row is found by id: a label is model-written prose that two runs can
+ * collide on or reword, and the card links by id.
  */
-function leadIdsOfTheme(projectId: string, label: string) {
+function leadIdsOfTheme(projectId: string, themeId: string) {
   return sql<string>`(
     select unnest(coalesce(${painThemes.leadIds}, '{}'))
     from ${painThemes}
-    where ${painThemes.projectId} = ${projectId} and ${painThemes.label} = ${label}
+    where ${painThemes.projectId} = ${projectId} and ${painThemes.id} = ${themeId}
   )`;
 }
 

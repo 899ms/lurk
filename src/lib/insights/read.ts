@@ -14,12 +14,16 @@ export const THEME_FACES = 5;
 
 export type ThemeFace = { name: string | null; avatarUrl: string | null };
 
+export type ThemeCommunity = { name: string; iconUrl: string | null };
+
 export type ThemeView = {
   id: string;
   label: string;
   summary: string | null;
   count: number;
   faces: ThemeFace[];
+  quotes: string[];
+  communities: ThemeCommunity[];
   generatedAt: Date;
 };
 
@@ -32,8 +36,42 @@ export type CommunityRow = {
   weeklyActiveUsers: number | null;
 };
 
-/** Who is behind a set of leads: the commenter when there is one, else the poster. */
-async function facesFor(leadIds: string[]): Promise<Map<string, ThemeFace>> {
+/** One lead as a theme card reads it: who said it, what they said, and where. */
+type LeadFact = { face: ThemeFace; phrase: string | null; community: ThemeCommunity };
+
+export type ThemeQuoteRow = { themeId: string; phrase: string | null };
+
+/**
+ * The words behind each theme, keyed by theme id. A lead whose matched phrase
+ * is empty said nothing worth printing, so it is dropped rather than shown as a
+ * blank quote, and one phrase two leads share is quoted once.
+ */
+export function themeQuotes(rows: ThemeQuoteRow[]): Map<string, string[]> {
+  const byTheme = new Map<string, string[]>();
+  for (const row of rows) {
+    const phrase = row.phrase?.trim();
+    if (!phrase) {
+      continue;
+    }
+    const quotes = byTheme.get(row.themeId) ?? [];
+    if (!quotes.includes(phrase)) {
+      quotes.push(phrase);
+    }
+    byTheme.set(row.themeId, quotes);
+  }
+  return byTheme;
+}
+
+/**
+ * Where the feed is, narrowed to one theme. The card and the feed agree on the
+ * shape of that link in one place, so neither can drift into a dead link.
+ */
+export function themeHref(projectId: string, themeId: string): string {
+  return `/app/leads?project=${encodeURIComponent(projectId)}&theme=${encodeURIComponent(themeId)}`;
+}
+
+/** Who is behind a set of leads, what they said, and which community they said it in. */
+async function factsFor(leadIds: string[]): Promise<Map<string, LeadFact>> {
   if (leadIds.length === 0) {
     return new Map();
   }
@@ -43,10 +81,14 @@ async function facesFor(leadIds: string[]): Promise<Map<string, ThemeFace>> {
       postAuthor: redditPosts.author,
       commentAuthor: redditComments.author,
       avatarUrl: redditAuthors.avatarUrl,
+      matchedPhrase: leads.matchedPhrase,
+      subreddit: redditPosts.subreddit,
+      subredditIconUrl: subreddits.iconUrl,
     })
     .from(leads)
     .innerJoin(redditPosts, eq(redditPosts.id, leads.postId))
     .leftJoin(redditComments, eq(redditComments.id, leads.commentId))
+    .leftJoin(subreddits, eq(subreddits.name, sql`lower(${redditPosts.subreddit})`))
     .leftJoin(
       redditAuthors,
       eq(
@@ -58,20 +100,49 @@ async function facesFor(leadIds: string[]): Promise<Map<string, ThemeFace>> {
   return new Map(
     rows.map((row) => [
       row.id,
-      { name: row.commentAuthor ?? row.postAuthor, avatarUrl: row.avatarUrl },
+      {
+        face: { name: row.commentAuthor ?? row.postAuthor, avatarUrl: row.avatarUrl },
+        phrase: row.matchedPhrase,
+        community: { name: row.subreddit, iconUrl: row.subredditIconUrl },
+      },
     ]),
   );
 }
 
-/** The stored themes with their faces, biggest theme first. */
+/** The communities a theme's leads came from, the busiest one first. */
+function communitiesOf(leadIds: string[], facts: Map<string, LeadFact>): ThemeCommunity[] {
+  const seen = new Map<string, { community: ThemeCommunity; leads: number }>();
+  for (const id of leadIds) {
+    const community = facts.get(id)?.community;
+    if (!community) {
+      continue;
+    }
+    const row = seen.get(community.name) ?? { community, leads: 0 };
+    row.leads += 1;
+    seen.set(community.name, row);
+  }
+  return [...seen.values()].sort((a, b) => b.leads - a.leads).map((row) => row.community);
+}
+
+/**
+ * The stored themes with their faces, quotes and communities, biggest first.
+ * A card quotes the same leads it shows faces for, so the two halves of the
+ * card describe one set of people rather than two.
+ */
 export async function listThemes(projectId: string): Promise<ThemeView[]> {
   const rows = await db()
     .select()
     .from(painThemes)
     .where(eq(painThemes.projectId, projectId))
     .orderBy(desc(painThemes.generatedAt));
-  const wanted = rows.flatMap((row) => (row.leadIds ?? []).slice(0, THEME_FACES));
-  const faces = await facesFor(wanted);
+  const facts = await factsFor(rows.flatMap((row) => row.leadIds ?? []));
+  const quotes = themeQuotes(
+    rows.flatMap((row) =>
+      (row.leadIds ?? [])
+        .slice(0, THEME_FACES)
+        .map((id) => ({ themeId: row.id, phrase: facts.get(id)?.phrase ?? null })),
+    ),
+  );
   return rows
     .map((row) => ({
       id: row.id,
@@ -80,8 +151,10 @@ export async function listThemes(projectId: string): Promise<ThemeView[]> {
       count: (row.leadIds ?? []).length,
       faces: (row.leadIds ?? [])
         .slice(0, THEME_FACES)
-        .map((id) => faces.get(id))
+        .map((id) => facts.get(id)?.face)
         .filter((face): face is ThemeFace => face !== undefined),
+      quotes: quotes.get(row.id) ?? [],
+      communities: communitiesOf(row.leadIds ?? [], facts),
       generatedAt: row.generatedAt,
     }))
     .sort((a, b) => b.count - a.count);

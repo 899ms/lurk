@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { Avatar } from "@/components/Avatar";
-import type { ThemeView } from "@/lib/insights/read";
+import { SubredditChip } from "@/components/SubredditChip";
+import { themeHref, type ThemeView } from "@/lib/insights/read";
 
-type ThemeCardProps = { theme: ThemeView };
+type ThemeCardProps = { theme: ThemeView; projectId: string };
 
 /** One group of leads: what these people struggle with, and who they are. */
-export function ThemeCard({ theme }: ThemeCardProps) {
+export function ThemeCard({ theme, projectId }: ThemeCardProps) {
   return (
     <div className="flex flex-col gap-3 rounded-card border bg-surface p-4">
       <div className="flex items-start justify-between gap-3">
@@ -17,6 +18,22 @@ export function ThemeCard({ theme }: ThemeCardProps) {
         </span>
       </div>
       {theme.summary ? <p className="text-body text-fg-muted">{theme.summary}</p> : null}
+      {theme.quotes.length > 0 ? (
+        <ul className="flex flex-col gap-1.5 border-l pl-3">
+          {theme.quotes.map((quote) => (
+            <li key={quote} className="text-small text-fg-muted">
+              &ldquo;{quote}&rdquo;
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {theme.communities.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+          {theme.communities.map((community) => (
+            <SubredditChip key={community.name} name={community.name} iconUrl={community.iconUrl} />
+          ))}
+        </div>
+      ) : null}
       <div className="flex items-center justify-between gap-3">
         <span className="flex items-center">
           {theme.faces.map((face, index) => (
@@ -30,7 +47,7 @@ export function ThemeCard({ theme }: ThemeCardProps) {
           ))}
         </span>
         <Link
-          href={`/app/leads?theme=${theme.id}`}
+          href={themeHref(projectId, theme.id)}
           className="transition-motion text-small text-fg-muted transition-colors hover:text-fg"
         >
           View leads
