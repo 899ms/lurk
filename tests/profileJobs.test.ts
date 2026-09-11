@@ -5,8 +5,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * What creating a project puts on the queue. The first screens a person sees
  * are filled by jobs, not by the request that created the project, so the
  * order these are queued in is the order the app comes alive in: the weekly
- * discovery delta, the one-time year backfill that fills the leads feed, then
- * the Google pass that fills the Reddit SEO tab.
+ * discovery delta, the one-time year backfill that fills the leads feed, the
+ * Google pass that fills the Reddit SEO tab, then the scan that fills the
+ * competitors tab.
  */
 
 const enqueueJob = vi.fn(async (kind: string, projectId: string | null, runAt?: Date) => ({
@@ -46,6 +47,7 @@ const profile = {
   targetUsers: "Ops teams",
   capabilities: ["branching"],
   exclusions: [],
+  notBuyers: ["students wanting a free plan"],
   serviceGeography: "Worldwide",
   destinations: [],
   problemPhrasings: ["forms that branch"],
@@ -60,7 +62,7 @@ describe.skipIf(!process.env.DATABASE_URL)("the jobs a new project starts with",
     generateStructured.mockResolvedValue(profile);
   });
 
-  it("queues the discovery delta, then the backfill, then the SEO refresh", async () => {
+  it("queues the discovery delta, the backfill, the SEO refresh and the competitor scan", async () => {
     const { db } = await import("@/db");
     const schema = await import("@/db/schema");
     const { buildProfile } = await import("@/lib/profile");
@@ -79,7 +81,13 @@ describe.skipIf(!process.env.DATABASE_URL)("the jobs a new project starts with",
       "discovery_refresh",
       "backfill",
       "seo_refresh",
+      "competitor_scan",
     ]);
-    expect(enqueueJob.mock.calls.map((call) => call[1])).toEqual([row.id, row.id, row.id]);
+    expect(enqueueJob.mock.calls.map((call) => call[1])).toEqual([
+      row.id,
+      row.id,
+      row.id,
+      row.id,
+    ]);
   });
 });

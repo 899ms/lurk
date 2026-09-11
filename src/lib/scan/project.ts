@@ -29,6 +29,7 @@ export type ScanProject = {
 function productText(row: typeof projects.$inferSelect, competitors: string[]): string {
   const capabilities = parseTextList(row.capabilities);
   const exclusions = parseTextList(row.exclusions);
+  const notBuyers = parseTextList(row.notBuyers);
   return [
     `Product: ${row.name}`,
     row.url ? `Website: ${row.url}` : "",
@@ -37,12 +38,31 @@ function productText(row: typeof projects.$inferSelect, competitors: string[]): 
     row.targetUsers ? `Who buys it: ${row.targetUsers}` : "",
     capabilities.length > 0 ? `Can: ${capabilities.join("; ")}` : "",
     exclusions.length > 0 ? `Does not: ${exclusions.join("; ")}` : "",
+    notBuyers.length > 0 ? `Not a buyer: ${notBuyers.join("; ")}` : "",
     row.geography ? `Sells in: ${row.geography}` : "",
     row.budgetFit ? `Budget: ${row.budgetFit}` : "",
     competitors.length > 0 ? `Competitors: ${competitors.join(", ")}` : "",
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+/**
+ * The competitors a scan is allowed to use. A competitor row carries the plan's
+ * own state vocabulary but is not a plan row, so `retrieved` reads the states
+ * off a stand-in rather than off the table itself.
+ */
+function retrievedNames(rows: { id: string; name: string; source: string; state: string }[]) {
+  return retrieved(
+    rows.map((row) => ({
+      id: row.id,
+      table: "keyword" as const,
+      key: row.name,
+      source: row.source,
+      state: row.state,
+      lastCoveredAt: null,
+    })),
+  ).map((row) => row.key);
 }
 
 /** Everything one scan needs about a project, read once. */
@@ -57,7 +77,12 @@ export async function loadScanProject(projectId: string): Promise<ScanProject | 
     db().select().from(projectSubreddits).where(eq(projectSubreddits.projectId, projectId)),
     db().select().from(projectCompetitors).where(eq(projectCompetitors.projectId, projectId)),
   ]);
-  const competitorNames = competitors.map((item) => item.name);
+  /**
+   * A competitor a person excluded on the Product page is not one of ours, so
+   * it is neither scanned nor named to the judge. Competitor rows carry the
+   * plan's own state vocabulary, so `retrieved` decides this too.
+   */
+  const competitorNames = retrievedNames(competitors);
   const queries: PlanRow[] = keywords.map((item) => ({
     id: item.id,
     table: "keyword",
