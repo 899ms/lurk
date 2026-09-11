@@ -25,6 +25,8 @@ export type FeedFilter = {
   kind?: LeadKind;
   subreddit?: string;
   stage?: string;
+  /** One Insights theme's label, narrowing the feed to the leads it holds. */
+  theme?: string;
 };
 
 export type FeedFacets = { subreddits: string[]; stages: string[] };
@@ -39,6 +41,8 @@ export type ReviewItem = {
   url: string;
   author: string | null;
   avatarUrl: string | null;
+  authorKarma: number | null;
+  authorCreatedAt: Date | null;
   subredditIconUrl: string | null;
   numComments: number | null;
   points: number | null;

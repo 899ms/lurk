@@ -97,6 +97,40 @@ describe.skipIf(!hasDatabase)("the feed at read time", () => {
     expect(await listLeads(project.id, { status: "new", days: 30 })).toHaveLength(2);
   });
 
+  it("narrows the feed to the leads one Insights theme holds", async () => {
+    const { db, schema, project, post } = await fixture(null);
+    const { listLeads } = await import("@/lib/leads");
+    const [other] = await db()
+      .insert(schema.redditPosts)
+      .values({
+        id: `p${randomUUID().slice(0, 8)}`,
+        subreddit: "SaaS",
+        author: "asker",
+        title: "Another form question",
+        url: "https://www.reddit.com/r/SaaS/comments/z/form/",
+        createdAt: new Date(Date.now() - 2 * DAY_MS),
+      })
+      .returning();
+    const held = await db()
+      .insert(schema.leads)
+      .values([
+        { projectId: project.id, postId: post.id, score: 60, stage: "comparing" },
+        { projectId: project.id, postId: other.id, score: 60, stage: "comparing" },
+      ])
+      .returning();
+    await db()
+      .insert(schema.painThemes)
+      .values({ projectId: project.id, label: "prefilled forms", leadIds: [held[0].id] });
+
+    const themed = await listLeads(project.id, {
+      status: "new",
+      days: "all",
+      theme: "prefilled forms",
+    });
+    expect(themed.map((lead) => lead.id)).toEqual([held[0].id]);
+    expect(await listLeads(project.id, { status: "new", days: "all" })).toHaveLength(2);
+  });
+
   it("shows what the day windows cut off once the window is all time", async () => {
     const { db, schema, project, post } = await fixture(null);
     const { listLeads } = await import("@/lib/leads");

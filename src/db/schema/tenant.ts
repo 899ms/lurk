@@ -72,6 +72,8 @@ export const projects = pgTable("projects", {
   capabilities: jsonb("capabilities"),
   /** What it cannot do, does not cover, or refuses, one short phrase each. */
   exclusions: jsonb("exclusions"),
+  /** Who is explicitly not a buyer, one short phrase each. */
+  notBuyers: jsonb("not_buyers"),
   /** Places this product serves, each with the page text it was read from. */
   destinations: jsonb("destinations"),
   /** How buyers say the problem, in their words, taken from the product page. */

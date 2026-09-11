@@ -3,6 +3,7 @@ import { db } from "@/db";
 import {
   leadEvaluations,
   leads,
+  painThemes,
   projects,
   redditAuthors,
   redditComments,
@@ -53,6 +54,9 @@ const feedColumns = {
   commentScore: redditComments.score,
   commentCreatedAt: redditComments.createdAt,
   authorAvatar: redditAuthors.avatarUrl,
+  authorKarma: redditAuthors.karma,
+  authorCreatedAt: redditAuthors.accountCreatedAt,
+  subredditWeeklyActive: subreddits.subscribers,
 };
 
 function feedQuery() {
@@ -97,6 +101,18 @@ function newerThan(days: FeedWindow) {
  */
 const OVER_THRESHOLD = sql`(${leads.kind} = 'context' OR ${leads.score} >= coalesce(${projects.scoreThreshold}, ${DEFAULT_SCORE_THRESHOLD}))`;
 
+/**
+ * The lead ids one Insights theme holds. The theme owns the list, so narrowing
+ * the feed to a theme is a membership test against that row and not a rescore.
+ */
+function leadIdsOfTheme(projectId: string, label: string) {
+  return sql<string>`(
+    select unnest(coalesce(${painThemes.leadIds}, '{}'))
+    from ${painThemes}
+    where ${painThemes.projectId} = ${projectId} and ${painThemes.label} = ${label}
+  )`;
+}
+
 /** The feed, best first, for one set of filter pills. */
 export async function listLeads(projectId: string, filter: FeedFilter) {
   return feedQuery()
@@ -110,6 +126,7 @@ export async function listLeads(projectId: string, filter: FeedFilter) {
         filter.kind ? eq(leads.kind, filter.kind) : undefined,
         filter.subreddit ? eq(sql`lower(${redditPosts.subreddit})`, filter.subreddit) : undefined,
         filter.stage ? eq(leads.stage, filter.stage) : undefined,
+        filter.theme ? inArray(leads.id, leadIdsOfTheme(projectId, filter.theme)) : undefined,
       ),
     )
     .orderBy(desc(leads.score), desc(NEED_AT));
@@ -134,6 +151,8 @@ export async function listReviewItems(
       url: sql<string>`coalesce(${redditComments.permalink}, ${redditPosts.url})`,
       author: sql<string | null>`coalesce(${redditComments.author}, ${redditPosts.author})`,
       avatarUrl: redditAuthors.avatarUrl,
+      authorKarma: redditAuthors.karma,
+      authorCreatedAt: redditAuthors.accountCreatedAt,
       subredditIconUrl: subreddits.iconUrl,
       numComments: redditPosts.numComments,
       points: sql<number | null>`coalesce(${redditComments.score}, ${redditPosts.score})`,

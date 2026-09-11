@@ -9,7 +9,7 @@ import type { StoredPost } from "@/lib/reddit/store";
 import { loadScanProject } from "@/lib/scan/project";
 import { capped, scanIntervalHours, tierForUser } from "@/lib/tier";
 import { RETENTION_DAYS, type TierLimits } from "@/lib/tiers";
-import { classifyMentions, type MentionCandidate } from "./classify";
+import { classifyMentions, type MentionCandidate, type Verdict } from "./classify";
 
 const HOUR_MS = 60 * 60 * 1000;
 const RETENTION_MS = RETENTION_DAYS * 24 * HOUR_MS;
@@ -21,6 +21,7 @@ export type CompetitorScanOutcome = {
   competitors: number;
   read: number;
   mentions: number;
+  skipped: number;
   costUsd: number;
 };
 
@@ -52,17 +53,29 @@ function toCandidate(post: StoredPost): MentionCandidate {
   };
 }
 
+/**
+ * A post the writer only linked to, embedded, or named without a view is not a
+ * mention worth storing, so only the_product verdicts reach the table.
+ */
+export function keepMentions(verdicts: Map<string, Verdict>): Map<string, Verdict> {
+  const kept = new Map<string, Verdict>();
+  for (const [id, verdict] of verdicts) {
+    if (verdict.about === "the_product") {
+      kept.set(id, verdict);
+    }
+  }
+  return kept;
+}
+
 async function writeMentions(
   projectId: string,
   competitor: string,
   posts: StoredPost[],
-  verdicts: Map<string, { sentiment: string; summary: string }>,
+  kept: Map<string, Verdict>,
 ): Promise<number> {
   const rows = posts
-    .map((post) => ({ post, verdict: verdicts.get(post.id) }))
-    .filter((entry): entry is { post: StoredPost; verdict: { sentiment: string; summary: string } } =>
-      entry.verdict !== undefined,
-    )
+    .map((post) => ({ post, verdict: kept.get(post.id) }))
+    .filter((entry): entry is { post: StoredPost; verdict: Verdict } => entry.verdict !== undefined)
     .map((entry) => ({
       projectId,
       competitor,
@@ -86,7 +99,7 @@ async function scanOne(
   ctx: FetchContext,
   jobId: string,
   competitor: string,
-): Promise<{ read: number; mentions: number; costUsd: number }> {
+): Promise<{ read: number; mentions: number; skipped: number; costUsd: number }> {
   await writeProgress(jobId, `Searching Reddit for ${competitor}`);
   const found = await fetchSearch(ctx, competitor, { timeframe: "week" });
   let costUsd = found.costUsd;
@@ -104,16 +117,18 @@ async function scanOne(
     full.push(result.value[0] ?? post);
   }
   if (full.length === 0) {
-    return { read: 0, mentions: 0, costUsd };
+    return { read: 0, mentions: 0, skipped: 0, costUsd };
   }
   const verdicts = await classifyMentions(ctx.projectId, competitor, full.map(toCandidate));
-  const mentions = await writeMentions(ctx.projectId, competitor, full, verdicts);
-  return { read: full.length, mentions, costUsd };
+  const kept = keepMentions(verdicts);
+  const mentions = await writeMentions(ctx.projectId, competitor, full, kept);
+  return { read: full.length, mentions, skipped: verdicts.size - kept.size, costUsd };
 }
 
 /**
  * One pass over the competitors a project watches: this week's newest Reddit
- * posts naming each, read in full, then judged in one call per competitor. A
+ * posts naming each, read in full, then judged in one call per competitor. Only
+ * a post about the competitor is stored, and the rest are counted as skipped. A
  * project with competitors books its next pass on the way out, at its tier's
  * scan interval.
  */
@@ -129,7 +144,7 @@ export async function runCompetitorScan(
   const names = competitorsToScan(project.competitors, limits);
   if (names.length === 0) {
     await writeProgress(jobId, "No competitors to watch yet");
-    return { competitors: 0, read: 0, mentions: 0, costUsd: 0 };
+    return { competitors: 0, read: 0, mentions: 0, skipped: 0, costUsd: 0 };
   }
   const ctx: FetchContext = {
     projectId,
@@ -140,12 +155,14 @@ export async function runCompetitorScan(
     competitors: names.length,
     read: 0,
     mentions: 0,
+    skipped: 0,
     costUsd: 0,
   };
   for (const name of names) {
     const one = await scanOne(ctx, jobId, name);
     outcome.read += one.read;
     outcome.mentions += one.mentions;
+    outcome.skipped += one.skipped;
     outcome.costUsd += one.costUsd;
   }
   await writeProgress(jobId, "Finished");

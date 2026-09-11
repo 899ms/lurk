@@ -92,6 +92,10 @@ export const subreddits = pgTable("subreddits", {
 export const redditAuthors = pgTable("reddit_authors", {
   username: text("username").primaryKey(),
   avatarUrl: text("avatar_url"),
+  /** Total karma as Reddit reports it, so a card can say how established the account is. */
+  karma: integer("karma"),
+  /** When the account was opened, which reads differently from a karma count alone. */
+  accountCreatedAt: timestamp("account_created_at", { withTimezone: true }),
   raw: jsonb("raw"),
   fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
 });
