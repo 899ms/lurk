@@ -1,4 +1,34 @@
-import type { CardLead } from "@/components/leads/LeadCard";
+/** One lead as the workspace shows it: the post or comment, and how it judged. */
+export type CardLead = {
+  id: string;
+  score: number;
+  fit: number | null;
+  intent: number | null;
+  engagement: number | null;
+  stage: string | null;
+  kind: string;
+  reason: string | null;
+  matchedPhrase: string | null;
+  title: string;
+  url: string;
+  subreddit: string;
+  subredditIconUrl: string | null;
+  subredditWeeklyActive: number | null;
+  promoPolicy: string | null;
+  rulesText: string | null;
+  imageUrl: string | null;
+  numComments: number | null;
+  points: number | null;
+  createdAt: Date;
+  body: string;
+  author: string | null;
+  avatarUrl: string | null;
+  authorKarma: number | null;
+  authorCreatedAt: Date | null;
+  isComment: boolean;
+  postAuthor: string | null;
+  postAuthorAvatar: string | null;
+};
 
 /** One thing in the feed: a lead the gates qualified. Nothing else. */
 export type StreamEntry = { id: string; at: Date; lead: CardLead };
@@ -15,7 +45,7 @@ export type StreamDay = { day: number; label: string; entries: StreamEntry[] };
  *
  * Held candidates are deliberately not here either: they are the pile the scan
  * would not call either way, and four of them, warm-badged, sat above the first
- * real lead. They have their own section under the feed instead.
+ * real lead. They have their own group under the leads instead.
  */
 export function buildStream(cards: CardLead[]): StreamEntry[] {
   return cards.map((lead): StreamEntry => ({ id: `lead-${lead.id}`, at: lead.createdAt, lead }));

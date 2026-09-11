@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildStream, groupByDay } from "@/components/leads/stream";
-import type { CardLead } from "@/components/leads/LeadCard";
+import { buildStream, groupByDay, type CardLead } from "@/components/leads/stream";
 
 /**
  * The feed opens on the best lead, not the newest thing found. Sorting the
@@ -25,6 +24,7 @@ function card(id: string, score: number, ageDays: number): CardLead {
     url: `https://reddit.test/${id}`,
     subreddit: "hotels",
     subredditIconUrl: null,
+    subredditWeeklyActive: null,
     promoPolicy: null,
     rulesText: null,
     imageUrl: null,
@@ -34,6 +34,8 @@ function card(id: string, score: number, ageDays: number): CardLead {
     body: "",
     author: "asker",
     avatarUrl: null,
+    authorKarma: null,
+    authorCreatedAt: null,
     isComment: false,
     postAuthor: "asker",
     postAuthorAvatar: null,
