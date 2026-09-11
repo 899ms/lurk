@@ -26,7 +26,14 @@ describe.skipIf(!hasDatabase)("counting one window of scanning", () => {
       .values({ userId: user.id, name: "Formcraft" })
       .returning();
 
-    async function post(ageDays: number) {
+    /**
+     * Posted now, whatever window the verdict belongs to. The report counts on
+     * judged_at and first_seen_at and never reads the post's own age, and
+     * deleteExpiredPosts drops every post past the retention window across the
+     * whole database, so a backdated fixture post is deleted out from under this
+     * file whenever tests/retention.test.ts happens to run beside it.
+     */
+    async function post() {
       const [row] = await db()
         .insert(schema.redditPosts)
         .values({
@@ -35,14 +42,14 @@ describe.skipIf(!hasDatabase)("counting one window of scanning", () => {
           author: "asker",
           title: "Form question",
           url: `https://www.reddit.com/r/SaaS/comments/${randomUUID().slice(0, 6)}/form/`,
-          createdAt: new Date(Date.now() - ageDays * DAY_MS),
+          createdAt: new Date(),
         })
         .returning();
       return row;
     }
 
     async function judged(decision: string, ageDays: number) {
-      const row = await post(ageDays);
+      const row = await post();
       await db()
         .insert(schema.leadEvaluations)
         .values({
