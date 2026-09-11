@@ -35,7 +35,9 @@ export function ProjectSwitcher({ projects, defaultId }: ProjectSwitcherProps) {
             value={activeId ?? ""}
             onChange={(event) => select(event.target.value)}
             aria-label="Active project"
-            className="h-10 min-w-0 flex-1 bg-surface text-body text-fg"
+            // pr-6 keeps a long project name clear of the select's own arrow,
+            // which a native select draws over the text rather than eliding it.
+            className="h-10 min-w-0 flex-1 bg-surface pr-6 text-body text-fg"
           >
             {projects.map((project) => (
               <option key={project.id} value={project.id}>

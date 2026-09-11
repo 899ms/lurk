@@ -76,7 +76,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             defaultId={project?.id ?? null}
           />
         </Rail>
-        <main className="flex-1" style={{ padding: "var(--page-gutter)" }}>
+        {/*
+          min-w-0 or the page grows to its widest content: a flex item's own
+          minimum is its max-content width, so one long Reddit body made the
+          whole app 5,246px wide in a 1,440px window and the people strip's
+          own horizontal scroll never engaged.
+        */}
+        <main className="min-w-0 flex-1" style={{ padding: "var(--page-gutter)" }}>
           {children}
         </main>
       </div>
