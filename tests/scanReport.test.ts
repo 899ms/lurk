@@ -16,6 +16,7 @@ describe.skipIf(!hasDatabase)("counting one window of scanning", () => {
   async function fixture() {
     process.env.APP_ENCRYPTION_KEY ??= Buffer.alloc(32).toString("base64");
     const { db } = await import("@/db");
+    const { eq } = await import("drizzle-orm");
     const schema = await import("@/db/schema");
     const [user] = await db()
       .insert(schema.users)
@@ -27,13 +28,13 @@ describe.skipIf(!hasDatabase)("counting one window of scanning", () => {
       .returning();
 
     /**
-     * Posted now, whatever window the verdict belongs to. The report counts on
-     * judged_at and first_seen_at and never reads the post's own age, and
+     * A post of a given age, kept out of the retention sweep's reach.
      * deleteExpiredPosts drops every post past the retention window across the
-     * whole database, so a backdated fixture post is deleted out from under this
-     * file whenever tests/retention.test.ts happens to run beside it.
+     * whole database, and a lead pointing at a post spares it, so the post is
+     * written at today's date, given its lead, and only then aged. It is never
+     * both old and unreferenced, whatever runs beside this file.
      */
-    async function post() {
+    async function post(ageDays: number) {
       const [row] = await db()
         .insert(schema.redditPosts)
         .values({
@@ -45,16 +46,38 @@ describe.skipIf(!hasDatabase)("counting one window of scanning", () => {
           createdAt: new Date(),
         })
         .returning();
+      await db().insert(schema.leads).values({ projectId: project.id, postId: row.id, score: 0 });
+      const [aged] = await db()
+        .update(schema.redditPosts)
+        .set({ createdAt: new Date(Date.now() - ageDays * DAY_MS) })
+        .where(eq(schema.redditPosts.id, row.id))
+        .returning();
+      return aged;
+    }
+
+    async function comment(postId: string, ageDays: number) {
+      const [row] = await db()
+        .insert(schema.redditComments)
+        .values({
+          id: `c${randomUUID().slice(0, 8)}`,
+          postId,
+          author: "asker",
+          body: "Still looking for one.",
+          createdAt: new Date(Date.now() - ageDays * DAY_MS),
+        })
+        .returning();
       return row;
     }
 
-    async function judged(decision: string, ageDays: number) {
-      const row = await post();
+    /** A verdict written just now, whatever age the thing it judged is. */
+    async function judged(decision: string, postAgeDays: number, commentId?: string) {
+      const row = await post(postAgeDays);
       await db()
         .insert(schema.leadEvaluations)
         .values({
           projectId: project.id,
           postId: row.id,
+          commentId: commentId ?? null,
           decision,
           relationship: "self",
           needState: "open",
@@ -67,12 +90,12 @@ describe.skipIf(!hasDatabase)("counting one window of scanning", () => {
           profileVersion: 1,
           contentHash: randomUUID(),
           scorerVersion: "test",
-          judgedAt: new Date(Date.now() - ageDays * DAY_MS),
+          judgedAt: new Date(),
         });
       return row;
     }
 
-    async function found(postId: string, sourceKind: string, ageDays: number) {
+    async function found(postId: string, sourceKind: string) {
       await db()
         .insert(schema.candidateSources)
         .values({
@@ -80,11 +103,11 @@ describe.skipIf(!hasDatabase)("counting one window of scanning", () => {
           postId,
           sourceKind,
           sourceKey: "form builder",
-          firstSeenAt: new Date(Date.now() - ageDays * DAY_MS),
+          firstSeenAt: new Date(),
         });
     }
 
-    return { project, judged, found };
+    return { project, post, comment, judged, found };
   }
 
   it("counts the verdicts inside the window and leaves the older one out", async () => {
@@ -104,13 +127,32 @@ describe.skipIf(!hasDatabase)("counting one window of scanning", () => {
     expect(await scanReport(project.id, "all")).toMatchObject({ read: 4, rejected: 2 });
   });
 
+  it("leaves out a verdict written today on a post nobody wrote this window", async () => {
+    const { project, judged } = await fixture();
+    await judged("qualify", 40);
+    const { scanReport } = await import("@/lib/scan/report");
+
+    expect(await scanReport(project.id, 7)).toMatchObject({ read: 0, qualified: 0 });
+    expect(await scanReport(project.id, "all")).toMatchObject({ read: 1, qualified: 1 });
+  });
+
+  it("dates a comment verdict by the comment, not by the thread it sits in", async () => {
+    const { project, post, comment, judged } = await fixture();
+    const thread = await post(40);
+    const reply = await comment(thread.id, 1);
+    await judged("qualify", 40, reply.id);
+    const { scanReport } = await import("@/lib/scan/report");
+
+    expect(await scanReport(project.id, 7)).toMatchObject({ read: 1, qualified: 1 });
+  });
+
   it("counts a post found four ways once, and only inside the window", async () => {
     const { project, judged, found } = await fixture();
     const inside = await judged("qualify", 1);
     const outside = await judged("reject", 40);
-    await found(inside.id, "search", 1);
-    await found(inside.id, "listing", 1);
-    await found(outside.id, "search", 40);
+    await found(inside.id, "search");
+    await found(inside.id, "listing");
+    await found(outside.id, "search");
     const { scanReport } = await import("@/lib/scan/report");
 
     expect((await scanReport(project.id, 7)).candidates).toBe(1);

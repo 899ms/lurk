@@ -1,6 +1,7 @@
 import { and, count, countDistinct, eq, gte } from "drizzle-orm";
 import { db } from "@/db";
-import { candidateSources, leadEvaluations } from "@/db/schema";
+import { candidateSources, leadEvaluations, redditComments, redditPosts } from "@/db/schema";
+import { newerThan } from "@/lib/leads";
 
 import type { SQLWrapper } from "drizzle-orm";
 import type { FeedWindow } from "@/lib/feed";
@@ -32,27 +33,26 @@ function inWindow(column: SQLWrapper, days: FeedWindow) {
   return gte(column, since(days));
 }
 
-/** The verdict and candidate counts for one project and one feed window. */
+/**
+ * The verdict and candidate counts for one project and one feed window, read on
+ * the same basis as the feed below it: when the person posted, not when we
+ * judged them. A backfill judges an old thread today, so windowing on judged_at
+ * counted hundreds of posts the feed was never going to show. A comment verdict
+ * is as old as the comment, which is why the comments join is here.
+ */
 export async function scanReport(projectId: string, days: FeedWindow): Promise<ScanReport> {
   const verdicts = await db()
     .select({ decision: leadEvaluations.decision, total: count() })
     .from(leadEvaluations)
-    .where(
-      and(
-        eq(leadEvaluations.projectId, projectId),
-        inWindow(leadEvaluations.judgedAt, days),
-      ),
-    )
+    .innerJoin(redditPosts, eq(redditPosts.id, leadEvaluations.postId))
+    .leftJoin(redditComments, eq(redditComments.id, leadEvaluations.commentId))
+    .where(and(eq(leadEvaluations.projectId, projectId), newerThan(days)))
     .groupBy(leadEvaluations.decision);
   const found = await db()
     .select({ total: countDistinct(candidateSources.postId) })
     .from(candidateSources)
-    .where(
-      and(
-        eq(candidateSources.projectId, projectId),
-        inWindow(candidateSources.firstSeenAt, days),
-      ),
-    );
+    .innerJoin(redditPosts, eq(redditPosts.id, candidateSources.postId))
+    .where(and(eq(candidateSources.projectId, projectId), inWindow(redditPosts.createdAt, days)));
   const by = (decision: string) =>
     verdicts.find((row) => row.decision === decision)?.total ?? 0;
   const qualified = by("qualify");

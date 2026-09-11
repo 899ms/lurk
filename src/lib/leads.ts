@@ -81,10 +81,12 @@ function since(days: number): Date {
 const NEED_AT = sql`coalesce(${redditComments.createdAt}, ${redditPosts.createdAt})`;
 
 /**
+ * The window rule the whole Leads page reads, feed and header sentence alike:
+ * a row belongs to a window by the need date, not by when we looked at it.
  * Postgres wants the bound date as text when the column is a plain expression.
  * The `all` window is no bound at all, so the backfill's older finds are shown.
  */
-function newerThan(days: FeedWindow) {
+export function newerThan(days: FeedWindow) {
   if (days === "all") {
     return undefined;
   }
