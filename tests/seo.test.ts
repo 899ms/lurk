@@ -1,10 +1,16 @@
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { competitorNamed } from "@/lib/seo/competitors";
 import { seoSettings } from "@/lib/seo/limits";
 import { redditResults, redditThread } from "@/lib/seo/links";
 import { TIERS } from "@/lib/tiers";
+
+/** Only the booking is faked; writeProgress still writes to the real jobs row. */
+vi.mock("@/jobs/enqueue", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/jobs/enqueue")>()),
+  enqueueJob: vi.fn(),
+}));
 
 describe("Reddit thread links", () => {
   it("reads the community and the post out of a thread URL on any reddit host", () => {
@@ -108,6 +114,46 @@ describe.skipIf(!process.env.DATABASE_URL)("what a refresh searches", () => {
     const settings = seoSettings(TIERS.free, loaded?.phrasings ?? []);
     expect(settings.phrasings).toEqual(["hotels that let 19 year olds check in"]);
     expect(settings.phrasings).not.toContain("(hotel OR hotels) AND (18 OR 19)");
+    await db().delete(schema.users).where(eq(schema.users.id, user.id));
+  });
+});
+
+/**
+ * The refresh used to return before booking anything when a project had no
+ * phrasings yet, so the one job a new project gets was also its last: the page
+ * kept saying the first refresh had finished and nothing ever looked again.
+ */
+describe.skipIf(!process.env.DATABASE_URL)("what a refresh books next", () => {
+  it("books the next refresh even when there are no phrasings to search", async () => {
+    const { db } = await import("@/db");
+    const schema = await import("@/db/schema");
+    const { enqueueJob } = await import("@/jobs/enqueue");
+    const { runSeoRefresh } = await import("@/lib/seo/refresh");
+    const booked = vi.mocked(enqueueJob);
+    booked.mockClear();
+
+    const [user] = await db()
+      .insert(schema.users)
+      .values({ clerkUserId: `test_${randomUUID()}` })
+      .returning();
+    const [project] = await db()
+      .insert(schema.projects)
+      .values({ userId: user.id, name: "No phrasings yet", problemPhrasings: [] })
+      .returning();
+    const [job] = await db()
+      .insert(schema.jobs)
+      .values({ kind: "seo_refresh", projectId: project.id, runAt: new Date() })
+      .returning();
+
+    const outcome = await runSeoRefresh(project.id, job.id);
+
+    expect(outcome).toEqual({ phrasings: 0, threads: 0, costUsd: 0 });
+    expect(booked).toHaveBeenCalledTimes(1);
+    const [kind, projectId, runAt] = booked.mock.calls[0];
+    expect(kind).toBe("seo_refresh");
+    expect(projectId).toBe(project.id);
+    expect(runAt!.getTime()).toBeGreaterThan(Date.now());
+
     await db().delete(schema.users).where(eq(schema.users.id, user.id));
   });
 });

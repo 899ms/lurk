@@ -1,9 +1,25 @@
 import { randomUUID } from "node:crypto";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { enqueueOnce } from "@/jobs/enqueue";
+import { JOB_HANDLERS } from "@/jobs/registry";
+import { runBackfill } from "@/lib/scan/backfill";
+import { runScan } from "@/lib/scan/run";
 import { captureRequestId, withRequestId } from "@/lib/anyapi";
 import { HEARTBEAT_MS, LEASE_MS } from "@/jobs/lease";
 import { reasonFor } from "@/jobs/runner";
 import { LlmTimeoutError, LLM_CALL_TIMEOUT_MS, withCallTimeout } from "@/lib/llm";
+
+/**
+ * The scan itself is not under test here, only what the registry does with what
+ * it returns. enqueueOnce keeps its real behaviour so the queue tests below
+ * still re-queue for real; the wiring suite at the end of this file replaces it.
+ */
+vi.mock("@/lib/scan/run", () => ({ runScan: vi.fn() }));
+vi.mock("@/lib/scan/backfill", () => ({ runBackfill: vi.fn() }));
+vi.mock("@/jobs/enqueue", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/jobs/enqueue")>();
+  return { ...actual, enqueueOnce: vi.fn(actual.enqueueOnce) };
+});
 
 describe("request identity", () => {
   it("gives each call its own request id and never the previous one", async () => {
@@ -377,5 +393,52 @@ describe.skipIf(!process.env.DATABASE_URL)("the job queue against a database", (
       .delete(jobs)
       .where(inArray(jobs.id, added.map((row) => row.id)));
     await db().delete(users).where(eq(users.id, user.id));
+  });
+});
+
+/**
+ * Nothing else queues insights, so a project whose owner never opened the
+ * insights page had no themes at all. This suite runs last: it leaves
+ * enqueueOnce faked, which the database-backed queue tests above rely on being
+ * real.
+ */
+describe("what a finished scan queues", () => {
+  const booked = vi.mocked(enqueueOnce);
+  const scan = vi.mocked(runScan);
+  const job = { id: "job-1", projectId: "project-1" } as Parameters<
+    (typeof JOB_HANDLERS)["scan"]
+  >[0];
+
+  beforeAll(() => {
+    booked.mockImplementation(async () => {});
+  });
+
+  beforeEach(() => {
+    booked.mockClear();
+    scan.mockReset();
+  });
+
+  it("groups the leads again once a scan has written some", async () => {
+    scan.mockResolvedValue({ candidates: 9, read: 4, leads: 2, gaps: [] });
+
+    await JOB_HANDLERS.scan(job);
+
+    expect(booked).toHaveBeenCalledWith("insights", expect.any(Date), "project-1");
+  });
+
+  it("queues nothing when a scan found no leads, so themes stay as they were", async () => {
+    scan.mockResolvedValue({ candidates: 9, read: 4, leads: 0, gaps: [] });
+
+    await JOB_HANDLERS.scan(job);
+
+    expect(booked).not.toHaveBeenCalled();
+  });
+
+  it("groups the leads a first year sweep wrote, which is a project's first themes", async () => {
+    vi.mocked(runBackfill).mockResolvedValue({ walks: 20, found: 500, judged: 500, leads: 7 });
+
+    await JOB_HANDLERS.backfill(job);
+
+    expect(booked).toHaveBeenCalledWith("insights", expect.any(Date), "project-1");
   });
 });

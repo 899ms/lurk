@@ -72,8 +72,9 @@ async function refreshPhrasing(
  * the plan's Reddit queries, because those are Boolean expressions Google
  * cannot read. Monthly volume is bought once for the whole list and only for a
  * connected wallet, because that endpoint costs a hundred times a Reddit call.
- * A project with phrasings books its next refresh on the way out, at its
- * tier's refresh interval.
+ * Every project books its next refresh on the way out, at its tier's refresh
+ * interval, including one with no phrasings yet: a project that booked nothing
+ * would never look again once its owner wrote them.
  */
 export async function runSeoRefresh(
   projectId: string,
@@ -85,12 +86,13 @@ export async function runSeoRefresh(
   }
   const { limits } = await tierForUser(project.userId);
   const settings = seoSettings(limits, project.phrasings);
+  const maxAgeMs = settings.refreshDays * DAY_MS;
   if (settings.phrasings.length === 0) {
     await writeProgress(jobId, "No problem phrasings to look up yet");
+    await enqueueJob("seo_refresh", projectId, new Date(Date.now() + maxAgeMs));
     return { phrasings: 0, threads: 0, costUsd: 0 };
   }
   const funded = await clientForUser(project.userId);
-  const maxAgeMs = settings.refreshDays * DAY_MS;
   const ctx: FetchContext = { projectId, funded, maxAgeMs };
 
   let threads = 0;
