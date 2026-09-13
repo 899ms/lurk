@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { eq } from "drizzle-orm";
+import { ActivityPoll } from "@/components/ActivityPoll";
 import { EmptyState } from "@/components/EmptyState";
 import { EvidenceThreads } from "@/components/product/EvidenceThreads";
 import { ListEditor } from "@/components/product/ListEditor";
@@ -21,6 +22,7 @@ import { requireLocalUser } from "@/lib/auth";
 import { dedupeThreads } from "@/lib/discovery/rank";
 import { loadEvidence, parseDestinations, parseTextList } from "@/lib/discovery/store";
 import { activeProject } from "@/lib/projects";
+import { activitySentence, isBusy, projectActivity } from "@/lib/projectActivity";
 import { DEFAULT_SCORE_THRESHOLD } from "@/lib/scan/constants";
 import { tierForUser } from "@/lib/tier";
 
@@ -65,6 +67,7 @@ export default async function ProductPage({ searchParams }: ProductPageProps) {
   const icons = Object.fromEntries(
     (await db().select().from(subredditRows)).map((row) => [row.name, row.iconUrl]),
   );
+  const activity = await projectActivity(project.id);
   const evidence = await loadEvidence(project.id);
   const threads = dedupeThreads(evidence)
     .sort((left, right) => right.weight - left.weight || left.bestPosition - right.bestPosition)
@@ -104,7 +107,10 @@ export default async function ProductPage({ searchParams }: ProductPageProps) {
           What we tell the scorer about your product, and where it looks. Edit
           anything that reads wrong; the next scan uses what is here.
         </p>
+        <p className="text-small text-fg-muted">{activitySentence(activity)}</p>
       </div>
+
+      <ActivityPoll busy={isBusy(activity)} />
 
       <ProfileForm
         project={{

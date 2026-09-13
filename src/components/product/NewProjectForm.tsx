@@ -10,9 +10,9 @@ import {
 const INITIAL: NewProjectState = { error: null };
 
 /**
- * Name and product URL, then one submit that creates the project and builds
- * its profile. A Server Action answers once, so the wait is shown as a single
- * honest state rather than three labels advancing on a guess.
+ * Name and product URL, then one submit that reads the site and opens the
+ * project. Everything after the page read happens in the background, so the
+ * wait here is one page read and the copy says exactly that.
  */
 export function NewProjectForm() {
   const [state, formAction, pending] = useActionState(
@@ -48,12 +48,13 @@ export function NewProjectForm() {
       </label>
       <div className="flex items-center gap-3">
         <Button type="submit" size="lg" disabled={pending}>
-          {pending ? "Building your profile" : "Create project"}
+          {pending ? "Reading your site" : "Create project"}
         </Button>
         {pending ? (
           <span aria-live="polite" className="text-small text-fg-muted">
-            Reading your site, working out who buys it, and checking the
-            subreddits. This takes a minute.
+            Reading your site now. Your subreddits, your keywords and the
+            first year of leads are found in the background over the next few
+            minutes.
           </span>
         ) : null}
       </div>
