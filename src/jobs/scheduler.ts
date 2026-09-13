@@ -2,6 +2,7 @@ import { Cron } from "croner";
 import { db } from "@/db";
 import { projects } from "@/db/schema";
 import { config } from "@/lib/config";
+import { hasStaleEvaluations } from "@/lib/scan/rescore";
 import { enqueueOnce } from "./enqueue";
 import { claimNextJob, runClaimedJob } from "./runner";
 
@@ -46,7 +47,9 @@ async function pump(workers: number): Promise<void> {
  * and stops learning where its buyers ask, until somebody presses a button. The
  * competitor scan and the SEO refresh are here for the same reason and one
  * more: a project made before either kind was queued on creation has never had
- * one at all, so boot is the only place it can pick them up.
+ * one at all, so boot is the only place it can pick them up. A project holding
+ * verdicts an older scorer made gets one sweep to bring them up to date; once
+ * it has run there is nothing stale left, so it is never queued again.
  */
 export async function seedProjectScans(): Promise<void> {
   const rows = await db()
@@ -67,6 +70,9 @@ export async function seedProjectScans(): Promise<void> {
     await enqueueOnce("discovery_refresh", new Date(), row.id);
     await enqueueOnce("competitor_scan", new Date(), row.id);
     await enqueueOnce("seo_refresh", new Date(), row.id);
+    if (await hasStaleEvaluations(row.id)) {
+      await enqueueOnce("rescore", new Date(), row.id);
+    }
   }
 }
 

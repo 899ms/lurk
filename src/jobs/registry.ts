@@ -7,6 +7,7 @@ import { runInitialDiscovery } from "@/lib/discovery/initial";
 import { deleteExpiredPosts } from "@/lib/retention";
 import { discoveryBudget } from "@/lib/discovery/run";
 import { runBackfill } from "@/lib/scan/backfill";
+import { runRescore } from "@/lib/scan/rescore";
 import { runScan } from "@/lib/scan/run";
 import { scanIntervalHours, tierForUser } from "@/lib/tier";
 import { runCompetitorsJob } from "./competitors";
@@ -68,6 +69,17 @@ export const JOB_HANDLERS: Record<string, JobHandler> = {
       throw new Error("An initial discovery needs a project");
     }
     await runInitialDiscovery(job.projectId, job.id);
+  },
+  /**
+   * One sweep over every verdict an older scorer made, queued at boot for a
+   * project that holds any. It runs once and queues nothing after itself: when
+   * it succeeds the project has no stale verdict left to find.
+   */
+  rescore: async (job) => {
+    if (!job.projectId) {
+      throw new Error("A rescore needs a project");
+    }
+    await runRescore(job.projectId, job.id);
   },
   discovery_refresh: async (job) => {
     if (!job.projectId) {

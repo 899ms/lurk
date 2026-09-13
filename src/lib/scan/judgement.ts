@@ -50,7 +50,8 @@ export type ReasonCode = (typeof REASON_CODES)[number];
 const evidenceSchema = z.object({ quote: z.string() });
 
 /**
- * What the judgement call returns for one candidate. Ten fields, because the
+ * What the judgement call returns for one candidate. Nine fields beside the
+ * id, where there were twelve, because the
  * measured slim prompt (.context/probe-prompt.ts, 100 judged posts, two Opus
  * labellers on the contested ones) agreed with the long one on every settled
  * post at a quarter less cost and half the wall time. The three fields it
