@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { competitorHost } from "@/lib/competitors/host";
-import { mentionSeries } from "@/lib/competitors/read";
 import { TIERS } from "@/lib/tiers";
 
 const generateStructured = vi.fn();
@@ -8,8 +7,9 @@ const generateStructured = vi.fn();
 vi.mock("@/lib/llm", () => ({ generateStructured }));
 vi.mock("@/db", () => ({ db: () => ({}) }));
 
+const { mentionSeries, topCompetitors } = await import("@/lib/competitors/read");
 const { classifyMentions } = await import("@/lib/competitors/classify");
-const { competitorsToScan } = await import("@/lib/competitors/scan");
+const { competitorsToScan, keepMentions } = await import("@/lib/competitors/scan");
 
 describe("competitor cap", () => {
   const names = ["Typeform", "Jotform", "Tally", "Fillout"];
@@ -48,8 +48,13 @@ describe("sentiment classification", () => {
   it("keeps one verdict per post it sent", async () => {
     generateStructured.mockResolvedValue({
       mentions: [
-        { id: "p1", sentiment: "negative", summary: " Leaving after a price rise " },
-        { id: "p2", sentiment: "positive", summary: "Recommends it" },
+        {
+          id: "p1",
+          about: "the_product",
+          sentiment: "negative",
+          summary: " Leaving after a price rise ",
+        },
+        { id: "p2", about: "the_product", sentiment: "positive", summary: "Recommends it" },
       ],
     });
     const verdicts = await classifyMentions("project-1", "Typeform", [
@@ -58,6 +63,7 @@ describe("sentiment classification", () => {
     ]);
     expect(generateStructured.mock.calls[0][0].purpose).toBe("competitors");
     expect(verdicts.get("p1")).toEqual({
+      about: "the_product",
       sentiment: "negative",
       summary: "Leaving after a price rise",
     });
@@ -67,9 +73,9 @@ describe("sentiment classification", () => {
   it("drops an answer about a post it never sent, and a repeat", async () => {
     generateStructured.mockResolvedValue({
       mentions: [
-        { id: "p1", sentiment: "neutral", summary: "First" },
-        { id: "p1", sentiment: "positive", summary: "Second" },
-        { id: "ghost", sentiment: "positive", summary: "Never sent" },
+        { id: "p1", about: "the_product", sentiment: "neutral", summary: "First" },
+        { id: "p1", about: "in_passing", sentiment: "positive", summary: "Second" },
+        { id: "ghost", about: "the_product", sentiment: "positive", summary: "Never sent" },
       ],
     });
     const verdicts = await classifyMentions("project-1", "Typeform", [
@@ -82,6 +88,52 @@ describe("sentiment classification", () => {
   it("asks nothing when there are no posts", async () => {
     expect((await classifyMentions("project-1", "Typeform", [])).size).toBe(0);
     expect(generateStructured).not.toHaveBeenCalled();
+  });
+});
+
+describe("only posts about the competitor are stored", () => {
+  it("keeps a post the writer is using or leaving, and drops a passing link", () => {
+    const kept = keepMentions(
+      new Map([
+        ["p1", { about: "the_product", sentiment: "negative", summary: "Leaving it" } as const],
+        [
+          "p2",
+          {
+            about: "in_passing",
+            sentiment: "neutral",
+            summary: "Shares a Typeform link to RSVP for a French cafe meetup",
+          } as const,
+        ],
+        [
+          "p3",
+          {
+            about: "in_passing",
+            sentiment: "neutral",
+            summary: "Shared a Google Forms link to vote for favorite songs",
+          } as const,
+        ],
+      ]),
+    );
+    expect([...kept.keys()]).toEqual(["p1"]);
+  });
+});
+
+describe("top competitors", () => {
+  it("orders by total mentions and splits each by sentiment", () => {
+    const counts = topCompetitors([
+      { competitor: "Jotform", sentiment: "positive" },
+      { competitor: "Typeform", sentiment: "negative" },
+      { competitor: "Typeform", sentiment: "negative" },
+      { competitor: "Typeform", sentiment: "neutral" },
+    ]);
+    expect(counts.map((row) => row.competitor)).toEqual(["Typeform", "Jotform"]);
+    expect(counts[0].total).toBe(3);
+    expect(counts[0].sentiments).toEqual({ positive: 0, neutral: 1, negative: 2 });
+    expect(counts[1].sentiments).toEqual({ positive: 1, neutral: 0, negative: 0 });
+  });
+
+  it("counts nothing when there are no mentions", () => {
+    expect(topCompetitors([])).toEqual([]);
   });
 });
 

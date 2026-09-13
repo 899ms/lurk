@@ -5,12 +5,17 @@ export const SENTIMENTS = ["positive", "neutral", "negative"] as const;
 
 export type Sentiment = (typeof SENTIMENTS)[number];
 
-export const CLASSIFY_SYSTEM = `You are reading Reddit posts that name a product. For each post say how the writer talks about that product and what they said, in one line. sentiment is positive when they recommend it or say it worked, negative when they complain, are leaving, or warn others off, and neutral when they only mention it, ask about it, or compare it without a verdict. Judge the named product only, not the rest of the post. Copy each id exactly and answer for every post you are given.`;
+export const ABOUTNESS = ["the_product", "in_passing"] as const;
+
+export type Aboutness = (typeof ABOUTNESS)[number];
+
+export const CLASSIFY_SYSTEM = `You are reading Reddit posts that name a product. For each post say whether the post is about that product, how the writer talks about it, and what they said, in one line. about is the_product when the writer is using, evaluating, comparing, leaving or recommending it. about is in_passing when the product only appears as a link, an embed, a form hosted on it, or a name dropped with no view expressed, even when the post itself is long. sentiment is positive when they recommend it or say it worked, negative when they complain, are leaving, or warn others off, and neutral when they only mention it, ask about it, or compare it without a verdict. Judge the named product only, not the rest of the post. Copy each id exactly and answer for every post you are given.`;
 
 const verdictSchema = z.object({
   mentions: z.array(
     z.object({
       id: z.string(),
+      about: z.enum(ABOUTNESS),
       sentiment: z.enum(SENTIMENTS),
       summary: z.string(),
     }),
@@ -24,7 +29,7 @@ export type MentionCandidate = {
   body: string;
 };
 
-export type Verdict = { sentiment: Sentiment; summary: string };
+export type Verdict = { about: Aboutness; sentiment: Sentiment; summary: string };
 
 function describe(item: MentionCandidate): string {
   return [
@@ -63,7 +68,11 @@ export async function classifyMentions(
   const known = new Set(items.map((item) => item.id));
   for (const mention of result.mentions) {
     if (known.has(mention.id) && !out.has(mention.id)) {
-      out.set(mention.id, { sentiment: mention.sentiment, summary: mention.summary.trim() });
+      out.set(mention.id, {
+        about: mention.about,
+        sentiment: mention.sentiment,
+        summary: mention.summary.trim(),
+      });
     }
   }
   return out;

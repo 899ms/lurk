@@ -28,6 +28,7 @@ const profileSchema = z.object({
   targetUsers: z.string(),
   capabilities: z.array(z.string()),
   exclusions: z.array(z.string()),
+  notBuyers: z.array(z.string()),
   serviceGeography: z.string(),
   destinations: z.array(z.object({ name: z.string(), sourceText: z.string() })),
   problemPhrasings: z.array(z.string()),
@@ -167,6 +168,7 @@ export async function buildProfile(
       budgetFit: profile.budgetFit,
       capabilities: profile.capabilities,
       exclusions: profile.exclusions,
+      notBuyers: profile.notBuyers,
       destinations: profile.destinations,
       problemPhrasings: profile.problemPhrasings,
     })
@@ -199,6 +201,16 @@ export async function buildProfile(
     projectId,
     new Date(Date.now() + discoveryBudget(limits).refreshDays * DAY_MS),
   );
+  /**
+   * The three jobs that fill the project's first screens: a one-time sweep of a
+   * year of Reddit's own search, the Google pass that fills the Reddit SEO tab,
+   * then the scan that fills the competitors tab. All are queued now, in that
+   * order, so none of them waits for a person. Project creation is the one
+   * place these belong: the scheduler seeds projects that already exist.
+   */
+  await enqueueJob("backfill", projectId);
+  await enqueueJob("seo_refresh", projectId);
+  await enqueueJob("competitor_scan", projectId);
   await onStep?.("done");
   return { ...profile, subreddits: resolved };
 }

@@ -3,6 +3,7 @@ import { db } from "@/db";
 import {
   leadEvaluations,
   leads,
+  painThemes,
   projects,
   redditAuthors,
   redditComments,
@@ -13,7 +14,7 @@ import {
 } from "@/db/schema";
 import { DEFAULT_SCORE_THRESHOLD } from "./scan/constants";
 
-import type { FeedFacets, FeedFilter, LeadCost, ReviewItem } from "./feed";
+import type { FeedFacets, FeedFilter, FeedWindow, LeadCost, ReviewItem } from "./feed";
 
 export type FeedLead = Awaited<ReturnType<typeof listLeads>>[number];
 
@@ -29,6 +30,7 @@ const feedColumns = {
   reason: leads.reason,
   matchedPhrase: leads.matchedPhrase,
   status: leads.status,
+  kind: leads.kind,
   postId: leads.postId,
   title: redditPosts.title,
   subreddit: redditPosts.subreddit,
@@ -52,6 +54,9 @@ const feedColumns = {
   commentScore: redditComments.score,
   commentCreatedAt: redditComments.createdAt,
   authorAvatar: redditAuthors.avatarUrl,
+  authorKarma: redditAuthors.karma,
+  authorCreatedAt: redditAuthors.accountCreatedAt,
+  subredditWeeklyActive: subreddits.subscribers,
 };
 
 function feedQuery() {
@@ -75,17 +80,42 @@ function since(days: number): Date {
 /** A comment lead is as old as the comment, never as old as the thread. */
 const NEED_AT = sql`coalesce(${redditComments.createdAt}, ${redditPosts.createdAt})`;
 
-/** Postgres wants the bound date as text when the column is a plain expression. */
-function newerThan(days: number) {
+/**
+ * The window rule the whole Leads page reads, feed and header sentence alike:
+ * a row belongs to a window by the need date, not by when we looked at it.
+ * Postgres wants the bound date as text when the column is a plain expression.
+ * The `all` window is no bound at all, so the backfill's older finds are shown.
+ */
+export function newerThan(days: FeedWindow) {
+  if (days === "all") {
+    return undefined;
+  }
   return sql`${NEED_AT} >= ${since(days).toISOString()}::timestamptz`;
 }
 
 /**
  * The project's own minimum score, applied when the feed is read. Moving it on
  * the Product page changes the next page load, with no rescan and nothing
- * deleted, because the judgement and the user's floor are different facts.
+ * deleted, because the judgement and the user's floor are different facts. The
+ * floor is a buyer-quality bar, so a `context` thread - kept for a comment, not
+ * for its buyer intent - is never measured against it; its score is the
+ * intent of someone who is not the buyer, and would always fall short.
  */
-const OVER_THRESHOLD = sql`${leads.score} >= coalesce(${projects.scoreThreshold}, ${DEFAULT_SCORE_THRESHOLD})`;
+const OVER_THRESHOLD = sql`(${leads.kind} = 'context' OR ${leads.score} >= coalesce(${projects.scoreThreshold}, ${DEFAULT_SCORE_THRESHOLD}))`;
+
+/**
+ * The lead ids one Insights theme holds. The theme owns the list, so narrowing
+ * the feed to a theme is a membership test against that row and not a rescore.
+ * The row is found by id: a label is model-written prose that two runs can
+ * collide on or reword, and the card links by id.
+ */
+function leadIdsOfTheme(projectId: string, themeId: string) {
+  return sql<string>`(
+    select unnest(coalesce(${painThemes.leadIds}, '{}'))
+    from ${painThemes}
+    where ${painThemes.projectId} = ${projectId} and ${painThemes.id} = ${themeId}
+  )`;
+}
 
 /** The feed, best first, for one set of filter pills. */
 export async function listLeads(projectId: string, filter: FeedFilter) {
@@ -97,8 +127,10 @@ export async function listLeads(projectId: string, filter: FeedFilter) {
         eq(leads.status, filter.status),
         OVER_THRESHOLD,
         newerThan(filter.days),
+        filter.kind ? eq(leads.kind, filter.kind) : undefined,
         filter.subreddit ? eq(sql`lower(${redditPosts.subreddit})`, filter.subreddit) : undefined,
         filter.stage ? eq(leads.stage, filter.stage) : undefined,
+        filter.theme ? inArray(leads.id, leadIdsOfTheme(projectId, filter.theme)) : undefined,
       ),
     )
     .orderBy(desc(leads.score), desc(NEED_AT));
@@ -111,7 +143,10 @@ export async function listLeads(projectId: string, filter: FeedFilter) {
  * already a lead for this project is never listed twice: a later rerun holding
  * it does not undo the earlier call.
  */
-export async function listReviewItems(projectId: string, days: number): Promise<ReviewItem[]> {
+export async function listReviewItems(
+  projectId: string,
+  days: FeedWindow,
+): Promise<ReviewItem[]> {
   const rows = await db()
     .select({
       id: leadEvaluations.id,
@@ -120,6 +155,8 @@ export async function listReviewItems(projectId: string, days: number): Promise<
       url: sql<string>`coalesce(${redditComments.permalink}, ${redditPosts.url})`,
       author: sql<string | null>`coalesce(${redditComments.author}, ${redditPosts.author})`,
       avatarUrl: redditAuthors.avatarUrl,
+      authorKarma: redditAuthors.karma,
+      authorCreatedAt: redditAuthors.accountCreatedAt,
       subredditIconUrl: subreddits.iconUrl,
       numComments: redditPosts.numComments,
       points: sql<number | null>`coalesce(${redditComments.score}, ${redditPosts.score})`,

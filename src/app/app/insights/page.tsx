@@ -14,7 +14,7 @@ type InsightsPageProps = { searchParams: Promise<{ project?: string; tab?: strin
 
 function lastRunSentence(job: Awaited<ReturnType<typeof lastRunJob>>): string {
   if (!job) {
-    return "Nothing grouped yet. Press Refresh to read the leads you already have.";
+    return "Nothing grouped yet.";
   }
   if (!job.finishedAt) {
     return job.progress ? `Grouping now: ${job.progress}` : "A grouping is queued.";
@@ -54,7 +54,8 @@ export default async function InsightsPage({ searchParams }: InsightsPageProps) 
           </h1>
           <p className="text-small text-fg-muted">{lastRunSentence(job)}</p>
           <p className="text-small text-fg-muted">
-            This screen reads leads you already have, so it costs nothing on AnyAPI.
+            Themes regroup after every scan that finds leads, and reading them costs nothing on
+            AnyAPI.
           </p>
         </div>
         <form action={refreshInsightsAction.bind(null, project.id)}>
@@ -69,12 +70,12 @@ export default async function InsightsPage({ searchParams }: InsightsPageProps) 
       ) : themes.length === 0 ? (
         <EmptyState
           title="No themes yet"
-          sentence="Once a scan has found leads, Refresh groups them by the problem people describe."
+          sentence="Once a scan has found leads, they are grouped here by the problem each person describes."
         />
       ) : (
         <div className="grid gap-3 md:grid-cols-2">
           {themes.map((theme) => (
-            <ThemeCard key={theme.id} theme={theme} />
+            <ThemeCard key={theme.id} theme={theme} projectId={project.id} />
           ))}
         </div>
       )}

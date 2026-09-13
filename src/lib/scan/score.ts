@@ -1,6 +1,6 @@
 import { generateStructured } from "@/lib/llm";
 import { JUDGEMENT_SYSTEM, TRIAGE_SYSTEM } from "@/lib/prompts";
-import { SCORE_BATCH_SIZE, TRIAGE_BATCH_SIZE } from "./constants";
+import { MODEL_CONCURRENCY, SCORE_BATCH_SIZE, TRIAGE_BATCH_SIZE, inFlight } from "./constants";
 import { describeCandidate, describeItem, isSentinel } from "./evidence";
 import { judge } from "./gates";
 import {
@@ -25,7 +25,6 @@ function unevaluated(id: string): TriageItem {
     disposition: "uncertain",
     priority: "low",
     reasonCode: "insufficient_context",
-    reason: "The triage returned no verdict for this candidate.",
   };
 }
 
@@ -65,13 +64,21 @@ export async function triageTitles(
   product: ProfileText,
   candidates: TriageCandidate[],
 ): Promise<TriageItem[]> {
-  const out: TriageItem[] = [];
+  const batches: TriageCandidate[][] = [];
   for (let start = 0; start < candidates.length; start += TRIAGE_BATCH_SIZE) {
-    out.push(
-      ...(await triageBatch(projectId, product, candidates.slice(start, start + TRIAGE_BATCH_SIZE))),
-    );
+    batches.push(candidates.slice(start, start + TRIAGE_BATCH_SIZE));
   }
-  return out;
+  const done = await inFlight(batches, async (batch) => {
+    try {
+      return await triageBatch(projectId, product, batch);
+    } catch {
+      // A batch the model never answered is the same thing as a batch it
+      // answered with nothing: those candidates are unread, not rejected. One
+      // dropped connection lost a whole sweep's triage on 2026-09-10.
+      return batch.map((candidate) => unevaluated(candidate.id));
+    }
+  }, MODEL_CONCURRENCY);
+  return done.flat();
 }
 
 /** What a candidate's own facts say about how urgent reading it is. */
@@ -146,6 +153,14 @@ async function judgeBatch(
 }
 
 /**
+ * Called with each batch of verdicts the moment it lands, so a caller can
+ * commit them while the rest of the run is still going. A first sweep judges
+ * for several minutes, and a feed that fills as it goes is the difference
+ * between waiting and reading.
+ */
+export type OnJudged = (batch: Judgement[]) => Promise<void>;
+
+/**
  * Judges items in batches. Every answer is checked against the batch it came
  * from and against the text it was shown: a foreign id is dropped, an id the
  * model skipped is asked for once more and otherwise left unevaluated, and a
@@ -156,16 +171,37 @@ export async function judgeItems(
   projectId: string,
   product: ProfileText,
   items: ScorableItem[],
+  onJudged?: OnJudged,
 ): Promise<Judgement[]> {
   const live = items.filter((item) => !isSentinel(item));
-  const out: Judgement[] = [];
+  const batches: ScorableItem[][] = [];
   for (let start = 0; start < live.length; start += SCORE_BATCH_SIZE) {
-    const batch = live.slice(start, start + SCORE_BATCH_SIZE);
-    const bySource = new Map(batch.map((item) => [item.id, item]));
-    for (const assessment of await judgeBatch(projectId, product, batch)) {
-      const source = bySource.get(assessment.id) as ScorableItem;
-      out.push(withCheckedEvidence(judge(assessment, source), source));
-    }
+    batches.push(live.slice(start, start + SCORE_BATCH_SIZE));
   }
-  return out;
+  const done = await inFlight(batches, async (batch) => {
+    const bySource = new Map(batch.map((item) => [item.id, item]));
+    let assessments: Assessment[];
+    try {
+      assessments = await judgeBatch(projectId, product, batch);
+    } catch {
+      // These ten keep no verdict, so the next run judges them again. Losing
+      // ten is not a reason to lose the other thousand.
+      return [];
+    }
+    const judged = assessments.map((assessment) => {
+      const source = bySource.get(assessment.id) as ScorableItem;
+      return withCheckedEvidence(judge(assessment, source), source);
+    });
+    if (onJudged) {
+      // A failed commit of ten must not lose the other batches' verdicts, for
+      // the same reason a dropped model call does not lose the sweep.
+      try {
+        await onJudged(judged);
+      } catch {
+        // The caller writes again from the returned list when the run ends.
+      }
+    }
+    return judged;
+  }, MODEL_CONCURRENCY);
+  return done.flat();
 }

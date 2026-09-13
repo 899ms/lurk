@@ -331,6 +331,31 @@ export function compileBooleanQuery(phrases: string[], productNumbers: Set<strin
   ].join(" AND ");
 }
 
+/**
+ * The compiled search split into one search per constraint. Reddit answers a
+ * search with a bounded listing, and a year of "hotel AND (18 OR 21 OR ...)"
+ * is far more posts than that listing holds, so the posts a single constraint
+ * would have surfaced are lost behind the bulk of the others. Measured on
+ * 2026-09-10: the combined query walked to about 500 posts and missed nine of
+ * ten known buyers; `(hotel OR hotels) AND "under 21"` alone returned 134 and
+ * held all nine. A query with one constraint is returned as it is.
+ */
+export function constraintQueries(query: string): string[] {
+  const at = query.lastIndexOf(" AND ");
+  if (at === -1) {
+    return [query];
+  }
+  const head = query.slice(0, at);
+  const tail = query.slice(at + " AND ".length);
+  if (!tail.startsWith("(") || !tail.endsWith(")")) {
+    return [query];
+  }
+  return tail
+    .slice(1, -1)
+    .split(" OR ")
+    .map((term) => `${head} AND ${term}`);
+}
+
 /** The same search asked inside one community. */
 export function scopedBooleanQuery(query: string, subreddit: string): string {
   return `subreddit:${subreddit} AND ${query}`;

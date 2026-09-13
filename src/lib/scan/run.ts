@@ -8,6 +8,7 @@ import { RETENTION_DAYS } from "@/lib/tiers";
 import { heldForComments, judgeThreads, readThreads } from "./comments";
 import { hydrationCap } from "./constants";
 import { isSentinel } from "./evidence";
+import { routeLead, type LeadKind } from "./gates";
 import {
   alreadyJudged,
   commentDigests,
@@ -23,6 +24,7 @@ import { loadScanProject, type ScanProject } from "./project";
 import { retrieve } from "./retrieve";
 import { creditSources, markCovered, type CandidateSource } from "./sources";
 import type { Judgement, ScorableItem } from "./judgement";
+import { readPosts, splitByReading } from "./reading";
 import { judgeItems, readOrder, triageTitles } from "./score";
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -42,16 +44,18 @@ export type ScanOutcome = {
   gaps: string[];
 };
 
-function toLead(
+export function toLead(
   project: ScanProject,
   judgement: Judgement,
   postId: string,
   commentId: string | null,
+  kind: LeadKind,
 ): LeadRow {
   return {
     projectId: project.id,
     postId,
     commentId,
+    kind,
     score: judgement.score,
     fit: judgement.fit,
     intent: judgement.intent,
@@ -71,7 +75,20 @@ function qualified<T extends { judgement: Judgement }>(items: T[]): T[] {
   return items.filter((item) => item.judgement.decision === "qualify");
 }
 
-function postItem(post: StoredPost): ScorableItem {
+/**
+ * The posts that reach the feed, each with the lane it belongs in. A buyer is
+ * the lead the project asked for; a thread the product plainly fits where
+ * nobody is asking is kept as context, because a comment there is still worth
+ * writing. Everything gates.ts rejects outright is dropped here.
+ */
+export function routed<T extends { judgement: Judgement }>(items: T[]): (T & { kind: LeadKind })[] {
+  return items.flatMap((item) => {
+    const kind = routeLead(item.judgement);
+    return kind === null ? [] : [{ ...item, kind }];
+  });
+}
+
+export function postItem(post: StoredPost): ScorableItem {
   return {
     id: post.id,
     title: post.title,
@@ -104,7 +121,7 @@ async function fetchAvatars(ctx: FetchContext, usernames: string[]): Promise<voi
  * post Reddit has taken away is dropped here, before a title is triaged or a
  * body is bought: there is nothing left to read and nobody left to answer.
  */
-async function unjudged(
+export async function unjudged(
   project: ScanProject,
   stored: Map<string, StoredJudgement>,
   posts: StoredPost[],
@@ -122,7 +139,7 @@ async function unjudged(
   );
 }
 
-async function evaluationsFor(
+export async function evaluationsFor(
   project: ScanProject,
   posts: StoredPost[],
   judgements: Judgement[],
@@ -144,8 +161,8 @@ async function evaluationsFor(
 
 /**
  * One scan: run the retrieval plan, triage the titles, read the shortlist in
- * full, judge it, and
- * write what qualified. Only then are comment threads bought, for two separate
+ * full, take the shared reading of each one, judge whatever that reading left,
+ * and write what qualified. Only then are comment threads bought, for two separate
  * purposes: checking whether each qualified need is still open, and finding the
  * other people in the thread who have a need of their own. Leads are already
  * committed by that point, so a thread we cannot read costs a scan nothing.
@@ -205,29 +222,53 @@ export async function runScan(projectId: string, jobId: string): Promise<ScanOut
       { ageHours: (Date.now() - post.createdAt.getTime()) / HOUR_MS, upvotes: post.score },
     ]),
   );
-  const shortlist = readOrder(triage, facts)
+  const ordered = readOrder(triage, facts)
     .map((id) => byId.get(id))
-    .filter((post): post is StoredPost => post !== undefined)
-    .slice(0, left);
+    .filter((post): post is StoredPost => post !== undefined);
+  /**
+   * A post whose text a search already carried needs no `reddit.post` call, so
+   * it is read for free and the hydration budget is spent only on the posts we
+   * still have to open.
+   */
+  let budget = left;
+  const shortlist = ordered.filter((post) => {
+    if (post.bodyObservedAt) {
+      return true;
+    }
+    if (budget === 0) {
+      return false;
+    }
+    budget -= 1;
+    return true;
+  });
+  const opening = shortlist.filter((post) => !post.bodyObservedAt);
 
-  await writeProgress(jobId, `Opening ${shortlist.length} posts`);
+  await writeProgress(jobId, `Opening ${opening.length} posts`);
   const full: StoredPost[] = [];
   for (const post of shortlist) {
-    const result = await fetchPost(ctx, post.url, RETENTION_MS);
-    full.push(result.value[0] ?? post);
+    if (!post.bodyObservedAt) {
+      const result = await fetchPost(ctx, post.url, RETENTION_MS);
+      full.push(result.value[0] ?? post);
+      continue;
+    }
+    full.push(post);
   }
 
-  await writeProgress(jobId, `Scoring ${full.length} posts`);
-  const toJudge = await unjudged(project, stored, full);
-  const judgements = await judgeItems(projectId, project.productText, toJudge.map(postItem));
-  await writeEvaluations(await evaluationsFor(project, toJudge, judgements));
+  await writeProgress(jobId, `Checking who is asking in ${full.length} posts`);
+  const unjudgedPosts = await unjudged(project, stored, full);
+  const sources = unjudgedPosts.map(postItem);
+  const { toJudge, cut } = splitByReading(sources, await readPosts(projectId, sources));
+
+  await writeProgress(jobId, `Scoring ${toJudge.length} of ${sources.length} posts`);
+  const judgements = [...cut, ...(await judgeItems(projectId, project.productText, toJudge))];
+  await writeEvaluations(await evaluationsFor(project, unjudgedPosts, judgements));
   for (const entry of retrieval.covered) {
     await markCovered(entry.row, entry.at);
   }
   const scored = judgements.map((judgement) => ({ judgement }));
-  const fullById = new Map(toJudge.map((post) => [post.id, post]));
-  const postLeads = qualified(scored).map((item) =>
-    toLead(project, item.judgement, item.judgement.id, null),
+  const fullById = new Map(unjudgedPosts.map((post) => [post.id, post]));
+  const postLeads = routed(scored).map((item) =>
+    toLead(project, item.judgement, item.judgement.id, null, item.kind),
   );
   await writeLeads(postLeads);
 
@@ -250,10 +291,10 @@ export async function runScan(projectId: string, jobId: string): Promise<ScanOut
       .map((item) => item.post.id),
   );
   const commentLeads = qualified(judged.discovery).map((item) =>
-    toLead(project, item.judgement, item.postId, item.comment.id),
+    toLead(project, item.judgement, item.postId, item.comment.id, "buyer"),
   );
   const rejudged = qualified(judged.verification).map((item) =>
-    toLead(project, item.judgement, item.post.id, null),
+    toLead(project, item.judgement, item.post.id, null, "buyer"),
   );
   await writeLeads([...rejudged, ...commentLeads]);
   const committed = new Set(
@@ -270,7 +311,7 @@ export async function runScan(projectId: string, jobId: string): Promise<ScanOut
 
   await creditSources(
     sourcesByPost,
-    toJudge.map((post) => post.id),
+    unjudgedPosts.map((post) => post.id),
     [...postLeads, ...rejudged].map((lead) => lead.postId),
   );
 

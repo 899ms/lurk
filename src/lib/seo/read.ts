@@ -8,6 +8,13 @@ import {
 } from "@/db/schema";
 import { normalizeQuery } from "@/lib/reddit/fetch";
 
+/**
+ * What a refresh writes as its progress when the project has no problem
+ * phrasings. The refresh writes it and the page reads it, so the sentence lives
+ * here once rather than as the same string in two files.
+ */
+export const NO_PHRASINGS_PROGRESS = "No problem phrasings to look up yet";
+
 export type SeoRow = Awaited<ReturnType<typeof listOpportunities>>[number];
 
 export type SeoFilter = { keyword?: string; subreddit?: string; competitor?: string };

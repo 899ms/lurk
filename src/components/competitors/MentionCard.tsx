@@ -1,23 +1,11 @@
 import { AuthorAvatar } from "@/components/AuthorAvatar";
 import { SubredditChip } from "@/components/SubredditChip";
+import { SENTIMENT_DOT, SENTIMENT_WORD } from "@/components/competitors/sentiment";
 import { relativeAge } from "@/lib/format";
-import type { Sentiment } from "@/lib/competitors/classify";
 import type { MentionView } from "@/lib/competitors/read";
 import { cn } from "@/lib/utils";
 
 type MentionCardProps = { mention: MentionView };
-
-const DOT: Record<Sentiment, string> = {
-  positive: "bg-score-hot",
-  neutral: "bg-fg-muted",
-  negative: "bg-score-warm",
-};
-
-const SENTIMENT_WORD: Record<Sentiment, string> = {
-  positive: "Speaks well of it",
-  neutral: "Mentions it",
-  negative: "Complains about it",
-};
 
 /** One post that named a competitor, and what it said. */
 export function MentionCard({ mention }: MentionCardProps) {
@@ -32,7 +20,7 @@ export function MentionCard({ mention }: MentionCardProps) {
         <span className="text-mono text-fg-muted">{relativeAge(mention.createdAt)}</span>
         <span className="ml-auto inline-flex items-center gap-1.5 text-small text-fg-muted">
           <span
-            className={cn("size-2 rounded-full", DOT[mention.sentiment])}
+            className={cn("size-2 rounded-full", SENTIMENT_DOT[mention.sentiment])}
             aria-hidden="true"
           />
           {SENTIMENT_WORD[mention.sentiment]}

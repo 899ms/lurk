@@ -23,13 +23,22 @@ export type RailGroup = { label: string; items: RailItem[] };
 
 type RailProps = { groups: RailGroup[]; children?: React.ReactNode };
 
-/** Left navigation, grouped Engage / Research / Setup, with count pills. */
+/**
+ * Left navigation, grouped Engage / Research / Setup, with count pills. It is
+ * pinned under the header rather than scrolled away with the page: it is how
+ * you leave the page you are on, so it has to be reachable from the bottom of
+ * a feed of eighty leads. It scrolls itself when it outgrows the viewport.
+ */
 export function Rail({ groups, children }: RailProps) {
   const pathname = usePathname();
   return (
     <nav
-      className="flex shrink-0 flex-col gap-6 border-r bg-bg px-4 py-5"
-      style={{ width: "var(--rail-width)" }}
+      className="sticky flex shrink-0 flex-col gap-6 self-start overflow-y-auto border-r bg-bg px-4 py-5"
+      style={{
+        width: "var(--rail-width)",
+        top: "var(--header-height)",
+        height: "calc(100dvh - var(--header-height))",
+      }}
     >
       {children}
       {groups.map((group) => (

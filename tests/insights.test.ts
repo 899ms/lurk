@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const generateStructured = vi.fn();
@@ -8,6 +9,7 @@ vi.mock("@/db", () => ({ db: () => ({}) }));
 const { MAX_THEMES, THEME_BATCH_SIZE, clusterLeads, mergeThemes } = await import(
   "@/lib/insights/themes"
 );
+const { themeHref, themeQuotes } = await import("@/lib/insights/read");
 
 type Input = Parameters<typeof clusterLeads>[1];
 
@@ -99,5 +101,41 @@ describe("clustering calls", () => {
   it("asks nothing when there is nothing to group", async () => {
     expect(await clusterLeads("project-1", [])).toEqual([]);
     expect(generateStructured).not.toHaveBeenCalled();
+  });
+});
+
+describe("the quotes a theme card shows", () => {
+  it("keys quotes by theme and drops a lead that said nothing", () => {
+    const quotes = themeQuotes([
+      { themeId: "theme-a", phrase: "we fill the same form every time" },
+      { themeId: "theme-a", phrase: "   " },
+      { themeId: "theme-a", phrase: null },
+      { themeId: "theme-b", phrase: "paying per seat for people who never log in" },
+    ]);
+    expect([...quotes.keys()]).toEqual(["theme-a", "theme-b"]);
+    expect(quotes.get("theme-a")).toEqual(["we fill the same form every time"]);
+    expect(quotes.get("theme-b")).toEqual(["paying per seat for people who never log in"]);
+  });
+
+  it("quotes one phrase once, however many leads matched it", () => {
+    const quotes = themeQuotes([
+      { themeId: "theme-a", phrase: "prefilled forms" },
+      { themeId: "theme-a", phrase: " prefilled forms " },
+    ]);
+    expect(quotes.get("theme-a")).toEqual(["prefilled forms"]);
+  });
+});
+
+describe("the link from a theme to its leads", () => {
+  it("carries the project and the theme id the feed filters on", () => {
+    expect(themeHref("project-1", "theme-a")).toBe(
+      "/app/leads?project=project-1&theme=theme-a",
+    );
+  });
+
+  it("is the only place the card builds that href", () => {
+    const card = readFileSync("src/components/insights/ThemeCard.tsx", "utf8");
+    expect(card).toContain("themeHref(projectId, theme.id)");
+    expect(card).not.toContain("/app/leads");
   });
 });

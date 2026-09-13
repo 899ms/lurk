@@ -13,6 +13,54 @@ export const DEFAULT_SCORE_THRESHOLD = 50;
 export const SCORE_BATCH_SIZE = 10;
 
 /**
+ * How many Reddit calls one job has in flight at once, whether it is opening
+ * posts or walking a search. The measured run read 540 posts ten at a time
+ * without a failure, so ten is what the evidence covers.
+ */
+export const CALL_CONCURRENCY = 10;
+
+/**
+ * How many model calls one job has in flight at once. Separate from the Reddit
+ * budget because it is a different provider with a different limit, and sharing
+ * one number made every model phase run at Reddit's.
+ *
+ * Measured against OpenRouter on 2026-09-10 with the real triage prompt and
+ * real titles, 70 to a batch (.context/probe-concurrency.ts):
+ *
+ *   concurrency 10   30 batches   279.0s   median call 82.2s   p95 129.1s
+ *   concurrency 30   30 batches   136.5s   median call 83.1s   p95 133.2s
+ *   concurrency 60   60 batches   147.8s   median call 81.3s   p95 114.8s
+ *
+ * No failure at any arm and no per-call slowdown at 60, so 60 is the largest
+ * the evidence covers rather than a guess. It is also more than the 62 triage
+ * and 59 scoring batches the largest sweep so far produced, which is what turns
+ * six sequential waves into one.
+ */
+export const MODEL_CONCURRENCY = 60;
+
+/** Runs `work` over `items`, `limit` at a time, in the input order. */
+export async function inFlight<T, R>(
+  items: T[],
+  work: (item: T) => Promise<R>,
+  limit: number = CALL_CONCURRENCY,
+): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    for (;;) {
+      const index = next;
+      if (index >= items.length) {
+        return;
+      }
+      next += 1;
+      out[index] = await work(items[index]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
+}
+
+/**
  * How many titles one triage call reads at a time. The saved runs in
  * .context/reddit-leads-proof/scorer-pass.md and scorer-pass-2.md triaged 70,
  * 77 and 78 titles in a single call and each came back complete, so 70 is the

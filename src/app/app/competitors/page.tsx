@@ -1,28 +1,51 @@
 import { scanCompetitorsAction } from "@/app/app/competitors/actions";
-import { CompetitorChip } from "@/components/competitors/CompetitorChip";
 import { MentionCard } from "@/components/competitors/MentionCard";
 import { MentionsBar } from "@/components/competitors/MentionsBar";
+import { TopCompetitors } from "@/components/competitors/TopCompetitors";
 import { EmptyState } from "@/components/EmptyState";
-import { relativeAge } from "@/lib/format";
+import { relativeAge, relativeUntil } from "@/lib/format";
 import { Button } from "@/components/ui/button";
-import { lastRunJob } from "@/jobs/enqueue";
+import { lastRunJob, nextQueuedJob } from "@/jobs/enqueue";
 import { requireLocalUser } from "@/lib/auth";
-import { listCompetitorNames, listMentions, mentionSeries } from "@/lib/competitors/read";
+import {
+  listCompetitorNames,
+  listMentions,
+  mentionSeries,
+  topCompetitors,
+} from "@/lib/competitors/read";
 import { activeProject } from "@/lib/projects";
 
 type CompetitorsPageProps = { searchParams: Promise<{ project?: string }> };
 
-function lastRunSentence(job: Awaited<ReturnType<typeof lastRunJob>>): string {
-  if (!job) {
-    return "No competitor scan has run yet. Press Scan now to see this week's posts.";
+type Job = Awaited<ReturnType<typeof lastRunJob>>;
+
+function lastSentence(job: Job): string | null {
+  if (!job?.startedAt) {
+    return null;
   }
   if (!job.finishedAt) {
-    return job.progress ? `Scanning now: ${job.progress}` : "A competitor scan is queued.";
+    return job.progress ? `Scanning now: ${job.progress}` : "Scanning now.";
   }
   if (job.error) {
-    return `Last scan stopped: ${job.error.split("\n")[0]}`;
+    return `Last scan stopped: ${job.error.split("\n")[0].trim()}`;
   }
   return `Last scanned ${relativeAge(job.finishedAt)}.`;
+}
+
+function nextSentence(job: Job): string {
+  if (!job) {
+    return "No scan is scheduled. Press Scan now.";
+  }
+  const until = relativeUntil(job.runAt);
+  return until === "now" ? "The next scan is due now." : `Next scan ${until}.`;
+}
+
+/** What the last scan did and when the next one runs, as one line. */
+function statusLine(last: Job, next: Job): string {
+  if (last?.startedAt && !last.finishedAt) {
+    return lastSentence(last) ?? "";
+  }
+  return [lastSentence(last) ?? "No competitor scan has run yet.", nextSentence(next)].join(" ");
 }
 
 export default async function CompetitorsPage({ searchParams }: CompetitorsPageProps) {
@@ -38,15 +61,13 @@ export default async function CompetitorsPage({ searchParams }: CompetitorsPageP
     );
   }
 
-  const [names, mentions, job] = await Promise.all([
+  const [names, mentions, last, next] = await Promise.all([
     listCompetitorNames(project.id),
     listMentions(project.id),
     lastRunJob("competitor_scan", project.id),
+    nextQueuedJob("competitor_scan", project.id),
   ]);
-  const counts = new Map<string, number>();
-  for (const mention of mentions) {
-    counts.set(mention.competitor, (counts.get(mention.competitor) ?? 0) + 1);
-  }
+  const ranked = topCompetitors(mentions);
 
   return (
     <div className="flex flex-col gap-5">
@@ -55,7 +76,7 @@ export default async function CompetitorsPage({ searchParams }: CompetitorsPageP
           <h1 className="text-h2" style={{ fontWeight: 500 }}>
             Competitors
           </h1>
-          <p className="text-small text-fg-muted">{lastRunSentence(job)}</p>
+          <p className="text-small text-fg-muted">{statusLine(last, next)}</p>
         </div>
         <form action={scanCompetitorsAction.bind(null, project.id)}>
           <Button type="submit" size="lg">
@@ -71,11 +92,7 @@ export default async function CompetitorsPage({ searchParams }: CompetitorsPageP
         />
       ) : (
         <>
-          <div className="flex flex-wrap gap-2">
-            {names.map((name) => (
-              <CompetitorChip key={name} name={name} count={counts.get(name) ?? 0} />
-            ))}
-          </div>
+          {ranked.length > 0 ? <TopCompetitors rows={ranked} /> : null}
           <MentionsBar series={mentionSeries(mentions, names)} />
           {mentions.length === 0 ? (
             <EmptyState

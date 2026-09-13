@@ -18,6 +18,12 @@ export type PlanRow = {
   source: string;
   state: string;
   evidence: number;
+  /** What this row has found and turned into leads since it was added. */
+  freshCandidates: number;
+  freshLeads: number;
+  /** Null until a scan has actually covered this row, which is what makes a
+   * zero a measurement rather than a row nobody has read yet. */
+  lastCoveredAt: Date | null;
 };
 
 type PlanEditorProps = {
@@ -68,6 +74,21 @@ function RowMark({
     );
   }
   return null;
+}
+
+/**
+ * What the row produced, and nothing at all before a scan has covered it: a
+ * zero next to a query nobody has run yet reads as a verdict on the query.
+ */
+function Yield({ row }: { row: PlanRow }) {
+  if (!row.lastCoveredAt) {
+    return null;
+  }
+  return (
+    <span className="font-mono text-mono text-fg-muted tabular-nums">
+      {row.freshCandidates} found, {row.freshLeads} leads
+    </span>
+  );
 }
 
 function Badge({ children }: { children: React.ReactNode }) {
@@ -132,6 +153,7 @@ export function PlanEditor({
                 {row.value}
               </span>
               <span className="ml-auto flex items-center gap-2">
+                <Yield row={row} />
                 <Badge>{SOURCE_LABEL[row.source] ?? row.source}</Badge>
                 <Badge>
                   {row.evidence} {row.evidence === 1 ? "thread" : "threads"}

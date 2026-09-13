@@ -10,17 +10,28 @@ function tone(value: number): string {
   return value >= 2 ? "bg-score-warm" : "bg-score-cool";
 }
 
-/** One judgement (fit, intent or engagement) read as a filled bar, not a number. */
+/**
+ * One judgement (fit, intent or engagement) read as a filled bar, not a number.
+ * A judgement the scan never made reads as a dash: an empty bar would say the
+ * scan looked and scored it zero, which is a different fact.
+ */
 export function Meter({ label, value }: MeterProps) {
-  const filled = value ?? 0;
+  if (value === null) {
+    return (
+      <span className="flex items-center justify-between gap-2">
+        <span className="text-mono text-fg-muted">{label}</span>
+        <span className="text-mono text-fg-muted">-</span>
+      </span>
+    );
+  }
   return (
-    <span className="flex flex-col gap-1.5" title={`${label} ${filled} of 4`}>
+    <span className="flex items-center justify-between gap-2" title={`${label} ${value} of 4`}>
       <span className="text-mono text-fg-muted">{label}</span>
-      <span className="flex items-center gap-1" aria-label={`${label} ${filled} of 4`}>
+      <span className="flex items-center gap-1" aria-label={`${label} ${value} of 4`}>
         {STEPS.map((step) => (
           <span
             key={step}
-            className={`h-1.5 w-5 rounded-full ${step <= filled ? tone(filled) : "bg-border"}`}
+            className={`h-1.5 w-5 rounded-full ${step <= value ? tone(value) : "bg-border"}`}
           />
         ))}
       </span>

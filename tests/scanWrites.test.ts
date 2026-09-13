@@ -102,6 +102,7 @@ describe.skipIf(!process.env.DATABASE_URL)("writing one scan's verdicts and lead
       intent: 3,
       engagement: 2,
       stage: "solution_seeking",
+      kind: "buyer" as const,
       reason: "Wants a form that branches.",
       matchedPhrase: "conditional logic",
     };
@@ -116,6 +117,40 @@ describe.skipIf(!process.env.DATABASE_URL)("writing one scan's verdicts and lead
     expect(written).toBe(2);
     const rows = await db().select().from(schema.leads).where(eq(schema.leads.projectId, project.id));
     expect(rows.map((row) => row.score).sort()).toEqual([70, 90]);
+
+    await db().delete(schema.users).where(eq(schema.users.id, user.id));
+  });
+
+  it("keeps which lane a lead is in, and moves it when the next verdict does", async () => {
+    const { db, schema, user, project, post } = await fixture();
+    const { writeLeads } = await import("@/lib/scan/leads");
+    const { eq } = await import("drizzle-orm");
+    const base = {
+      projectId: project.id,
+      postId: post.id,
+      commentId: null,
+      score: 60,
+      fit: 3,
+      intent: 1,
+      engagement: 2,
+      stage: "problem_aware",
+      reason: "Nobody is asking, but the thread is about this.",
+      matchedPhrase: "conditional logic",
+    };
+
+    await writeLeads([{ ...base, kind: "context" as const }]);
+    const asContext = await db()
+      .select()
+      .from(schema.leads)
+      .where(eq(schema.leads.projectId, project.id));
+    expect(asContext.map((row) => row.kind)).toEqual(["context"]);
+
+    await writeLeads([{ ...base, kind: "buyer" as const }]);
+    const asBuyer = await db()
+      .select()
+      .from(schema.leads)
+      .where(eq(schema.leads.projectId, project.id));
+    expect(asBuyer.map((row) => row.kind)).toEqual(["buyer"]);
 
     await db().delete(schema.users).where(eq(schema.users.id, user.id));
   });

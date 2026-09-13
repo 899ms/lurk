@@ -2,7 +2,7 @@ import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { competitorMentions } from "@/db/schema/competitors";
 import { projectCompetitors, redditAuthors, redditPosts, subreddits } from "@/db/schema";
-import type { Sentiment } from "./classify";
+import { SENTIMENTS, type Sentiment } from "./classify";
 
 /** The window the competitor screen shows, matching the feed window. */
 export const MENTION_WINDOW_DAYS = 30;
@@ -101,4 +101,33 @@ export function mentionSeries(
     const row = buckets.get(competitor) as number[];
     return { competitor, days: row, total: row.reduce((sum, one) => sum + one, 0) };
   });
+}
+
+export type CompetitorCount = {
+  competitor: string;
+  total: number;
+  sentiments: Record<Sentiment, number>;
+};
+
+/**
+ * How often each competitor was mentioned, split by sentiment, loudest first.
+ * Competitors tied on total keep the order they were first mentioned in.
+ */
+export function topCompetitors(
+  mentions: Pick<MentionView, "competitor" | "sentiment">[],
+): CompetitorCount[] {
+  const counts = new Map<string, CompetitorCount>();
+  for (const mention of mentions) {
+    let row = counts.get(mention.competitor);
+    if (!row) {
+      const sentiments = Object.fromEntries(
+        SENTIMENTS.map((name) => [name, 0]),
+      ) as Record<Sentiment, number>;
+      row = { competitor: mention.competitor, total: 0, sentiments };
+      counts.set(mention.competitor, row);
+    }
+    row.total += 1;
+    row.sentiments[mention.sentiment] += 1;
+  }
+  return [...counts.values()].sort((a, b) => b.total - a.total);
 }

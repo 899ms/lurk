@@ -51,26 +51,33 @@ async function loadPage(runId: string): Promise<PostPage> {
  * "Typeform alternatives" over one week returned 1 unrelated post sorted new
  * and 7 on-topic ones sorted by relevance, so newest-first threw the leads away
  * and left the title prefilter nothing to keep. The timeframe already bounds
- * how old a result can be.
+ * how old a result can be. A caller sweeping a year wants both orders, so the
+ * sort is theirs to pick and is part of the run key: relevance and new are two
+ * different pages of the same query and must never serve each other.
  */
 export async function fetchSearch(
   ctx: FetchContext,
   query: string,
-  options: { timeframe: "day" | "week" | "month"; cursor?: string },
+  options: {
+    timeframe: "day" | "week" | "month" | "year";
+    sort?: "relevance" | "new";
+    cursor?: string;
+  },
 ): Promise<SharedResult<PostPage>> {
   const { timeframe, cursor } = options;
+  const sort = options.sort ?? "relevance";
   return fetchShared<PostPage>({
     ctx,
     kind: "keyword",
     sku: "reddit.search",
     normalizedQuery: normalizeQuery(query),
-    sort: "relevance",
+    sort,
     timeframe,
     variant: variantOf({ cursor }),
     run: async () => {
       const res = await ctx.funded.client.reddit.search({
         query,
-        sort: "relevance",
+        sort,
         timeframe,
         ...(cursor ? { cursor } : {}),
       });
@@ -223,11 +230,17 @@ export async function fetchSubredditDetails(
   });
 }
 
-export type AuthorFace = { username: string; avatarUrl: string | null } | null;
+export type AuthorFace = {
+  username: string;
+  avatarUrl: string | null;
+  karma: number | null;
+  accountCreatedAt: Date | null;
+} | null;
 
 /**
- * One Reddit account's avatar, kept a month. Called only for authors whose post
- * already became a lead, so the cost follows leads and not candidates.
+ * One Reddit account's public facts, kept a month. Called only for authors whose
+ * post already became a lead, so the cost follows leads and not candidates. The
+ * karma and the account age ride along on that same call and cost nothing more.
  */
 export async function fetchAuthorProfile(
   ctx: FetchContext,
@@ -246,20 +259,31 @@ export async function fetchAuthorProfile(
       return { data: res.output.found ? res.output.data : null, costUsd: res.costUsd };
     },
     store: async (data) => {
-      const profile = data as { username?: string; avatarUrl?: string } | null;
+      const profile = data as
+        | { username?: string; avatarUrl?: string; karma?: number; createdUtc?: number }
+        | null;
       if (!profile) {
         return null;
       }
       const values = {
         username: key,
         avatarUrl: profile.avatarUrl ?? null,
+        karma: profile.karma ?? null,
+        // `createdUtc` is Unix seconds, as the reddit.profile schema states.
+        accountCreatedAt:
+          profile.createdUtc === undefined ? null : new Date(profile.createdUtc * 1000),
         fetchedAt: new Date(),
       };
       await db()
         .insert(redditAuthors)
         .values(values)
         .onConflictDoUpdate({ target: redditAuthors.username, set: values });
-      return { username: key, avatarUrl: profile.avatarUrl ?? null };
+      return {
+        username: key,
+        avatarUrl: values.avatarUrl,
+        karma: values.karma,
+        accountCreatedAt: values.accountCreatedAt,
+      };
     },
     load: async () => {
       const rows = await db()
@@ -267,7 +291,14 @@ export async function fetchAuthorProfile(
         .from(redditAuthors)
         .where(eq(redditAuthors.username, key));
       const row = rows[0];
-      return row ? { username: row.username, avatarUrl: row.avatarUrl } : null;
+      return row
+        ? {
+            username: row.username,
+            avatarUrl: row.avatarUrl,
+            karma: row.karma,
+            accountCreatedAt: row.accountCreatedAt,
+          }
+        : null;
     },
   });
 }

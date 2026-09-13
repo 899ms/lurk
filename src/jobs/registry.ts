@@ -5,6 +5,7 @@ import { CADENCE_MS } from "@/lib/alerts/select";
 import { runDiscoveryRefresh } from "@/lib/discovery/refresh";
 import { deleteExpiredPosts } from "@/lib/retention";
 import { discoveryBudget } from "@/lib/discovery/run";
+import { runBackfill } from "@/lib/scan/backfill";
 import { runScan } from "@/lib/scan/run";
 import { scanIntervalHours, tierForUser } from "@/lib/tier";
 import { runCompetitorsJob } from "./competitors";
@@ -19,6 +20,18 @@ export type JobHandler = (job: Job) => Promise<void>;
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 
+/**
+ * Books the themes job when a run wrote leads. Nothing else queues insights, so
+ * without this a project's themes only ever change when somebody presses the
+ * button on the insights page. enqueueOnce, not enqueueJob, so a grouping a
+ * user just asked for keeps the time it was given.
+ */
+async function regroupLeads(projectId: string, leads: number): Promise<void> {
+  if (leads > 0) {
+    await enqueueOnce("insights", new Date(), projectId);
+  }
+}
+
 /** Every job kind the scheduler knows how to run. */
 export const JOB_HANDLERS: Record<string, JobHandler> = {
   noop: async () => {},
@@ -26,7 +39,22 @@ export const JOB_HANDLERS: Record<string, JobHandler> = {
     if (!job.projectId) {
       throw new Error("A scan job needs a project");
     }
-    await runScan(job.projectId, job.id);
+    const outcome = await runScan(job.projectId, job.id);
+    await regroupLeads(job.projectId, outcome.leads);
+  },
+  /**
+   * The one-time year sweep a new project starts with. It queues nothing after
+   * itself when it finishes: the scan keeps the feed fresh from then on. When
+   * it fails (a model timeout took one live run down mid-triage) it is due
+   * again one scan interval later, like a scan, and resumes from what it
+   * already bought and judged.
+   */
+  backfill: async (job) => {
+    if (!job.projectId) {
+      throw new Error("A backfill needs a project");
+    }
+    const outcome = await runBackfill(job.projectId, job.id);
+    await regroupLeads(job.projectId, outcome.leads);
   },
   discovery_refresh: async (job) => {
     if (!job.projectId) {
@@ -77,7 +105,7 @@ async function discoveryRefreshDaysFor(projectId: string): Promise<number> {
  */
 export async function nextRunAt(job: Job): Promise<Date | null> {
   const now = Date.now();
-  if (job.kind === "scan" && job.projectId) {
+  if ((job.kind === "scan" || job.kind === "backfill") && job.projectId) {
     return new Date(now + (await scanIntervalHoursFor(job.projectId)) * HOUR_MS);
   }
   if (job.kind === "discovery_refresh" && job.projectId) {

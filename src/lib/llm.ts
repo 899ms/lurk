@@ -61,6 +61,24 @@ export async function withCallTimeout<T>(
   }
 }
 
+/**
+ * How hard the model thinks before it answers. It cannot be told not to: the
+ * endpoint answers `reasoning is mandatory for this endpoint and cannot be
+ * disabled` to `reasoning.enabled: false`. It can be turned down, and measured
+ * on 2026-09-10 over 100 posts the scan had already judged
+ * (.context/probe-judge-effort.ts), low effort costs nothing:
+ *
+ *   judgement, default   98-115s   94k output tokens   agrees on 96/100
+ *   judgement, low       39-41s    41k output tokens   agrees on 96/100
+ *
+ * Both arms qualified the same posts to within the model's own run-to-run
+ * variance, and the default arm varied as much between two runs of itself as
+ * the two efforts did from each other. Triage moved the same way: 39.5s
+ * against 106.6s, and it keeps more titles, which is the safe direction for a
+ * pass whose job is to spend a reading budget rather than to reject anybody.
+ */
+const REASONING_EFFORT = "low";
+
 /** Raised when the instance has no OpenRouter key, so nothing can be scored. */
 export class LlmNotConfiguredError extends Error {
   constructor() {
@@ -142,6 +160,7 @@ export async function generateStructured<T>(call: LlmCall<T>): Promise<T> {
       schema: call.schema,
       system: call.system,
       prompt: call.prompt,
+      providerOptions: { openrouter: { reasoning: { effort: REASONING_EFFORT } } },
       abortSignal,
     }),
   );

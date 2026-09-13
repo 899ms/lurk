@@ -68,13 +68,18 @@ export async function lastRunJob(kind: string, projectId: string): Promise<JobRo
   return rows[0] ?? null;
 }
 
-/** The next scan waiting for this project, or null when none is scheduled. */
-export async function nextScanJob(projectId: string): Promise<JobRow | null> {
+/** The next job of a kind waiting for this project, or null when none is. */
+export async function nextQueuedJob(kind: string, projectId: string): Promise<JobRow | null> {
   const rows = await db()
     .select()
     .from(jobs)
-    .where(and(eq(jobs.kind, "scan"), eq(jobs.projectId, projectId), isNull(jobs.startedAt)))
+    .where(and(eq(jobs.kind, kind), eq(jobs.projectId, projectId), isNull(jobs.startedAt)))
     .orderBy(asc(jobs.runAt))
     .limit(1);
   return rows[0] ?? null;
+}
+
+/** The next scan waiting for this project, or null when none is scheduled. */
+export async function nextScanJob(projectId: string): Promise<JobRow | null> {
+  return nextQueuedJob("scan", projectId);
 }

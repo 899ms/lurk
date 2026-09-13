@@ -109,6 +109,10 @@ export function ProfileForm({ project }: ProfileFormProps) {
             defaultValue={project.budgetFit}
             className={INPUT}
           />
+          <span className="text-small text-fg-muted">
+            A lead is only dropped over money when the person says they cannot
+            pay. Someone who never mentions a budget is kept.
+          </span>
         </Line>
       </div>
       <Line label="Minimum score to show a lead (0 to 100)">

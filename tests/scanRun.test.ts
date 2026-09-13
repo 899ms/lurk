@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { StoredPost } from "@/lib/reddit/store";
 
 /**
  * The scan's order of operations, against a real database with only AnyAPI and
@@ -113,7 +114,39 @@ describe.skipIf(!hasDatabase)("runScan against a database", () => {
     return row;
   }
 
-  async function posts(count: number, patch: { body?: string; author?: string } = {}) {
+  const BODY = "Our signup form needs conditional logic.";
+
+  /**
+   * What opening a listing-shaped post does: `reddit.post` carries the text,
+   * and the shared row keeps it, which is what lets the next scan reuse the
+   * verdict instead of judging the same words again.
+   */
+  async function opened(post: StoredPost): Promise<StoredPost> {
+    const [row] = await upsertPosts([
+      {
+        id: post.id,
+        subreddit: post.subreddit,
+        author: post.author ?? undefined,
+        title: post.title,
+        body: BODY,
+        url: post.url,
+        score: post.score ?? undefined,
+        numComments: post.numComments ?? undefined,
+        createdUtc: Math.floor(post.createdAt.getTime() / 1000),
+      },
+    ]);
+    return row;
+  }
+
+  /**
+   * Candidates as they arrive with their text, which is what a search result
+   * now does. Pass `body: undefined` for a listing-shaped post the scan still
+   * has to open.
+   */
+  async function posts(
+    count: number,
+    patch: { body?: string | undefined; author?: string } = {},
+  ) {
     const now = Math.floor(Date.now() / 1000);
     return upsertPosts(
       Array.from({ length: count }, (_, index) => ({
@@ -121,7 +154,7 @@ describe.skipIf(!hasDatabase)("runScan against a database", () => {
         subreddit: "SaaS",
         author: `asker${index}`,
         title: `Form question ${index}`,
-        body: "Our signup form needs conditional logic.",
+        body: BODY,
         permalink: `/r/SaaS/comments/x${index}/form/`,
         score: 3,
         numComments: 2,
@@ -131,9 +164,33 @@ describe.skipIf(!hasDatabase)("runScan against a database", () => {
     );
   }
 
-  /** Triage in a fixed order, then one assessment per id the prompt carries. */
-  function model(order: string[], score: (id: string, prompt: string) => Assessment) {
+  /** What the shared reading says about a post, before any product. */
+  function reading(patch: Record<string, unknown> = {}) {
+    return {
+      speaker: "buyer",
+      asking: true,
+      need: "a form builder with conditional logic",
+      category: "form builder",
+      constraints: [],
+      ...patch,
+    };
+  }
+
+  /**
+   * Triage in a fixed order, the shared reading of each post, then one
+   * assessment per id the judgement prompt carries. `read` says what the
+   * reading found; by default a buyer who is asking, which is the only reading
+   * that lets a post reach the judge at all.
+   */
+  function model(
+    order: string[],
+    score: (id: string, prompt: string) => Assessment,
+    read: (prompt: string) => Record<string, unknown> = () => reading(),
+  ) {
     generateStructured.mockImplementation(async (input: { purpose: string; prompt: string }) => {
+      if (input.purpose === "reading") {
+        return read(input.prompt);
+      }
       if (input.purpose === "triage") {
         return {
           items: order.map((id, index) => ({
@@ -141,7 +198,6 @@ describe.skipIf(!hasDatabase)("runScan against a database", () => {
             disposition: "read",
             priority: index === 0 ? "high" : "medium",
             reasonCode: "explicit_ask",
-            reason: "asks for a form tool",
           })),
         };
       }
@@ -158,10 +214,10 @@ describe.skipIf(!hasDatabase)("runScan against a database", () => {
 
   it("reads in triage order, stores every verdict, and reuses them on the next scan", async () => {
     const row = await project();
-    const [first, second, third] = await posts(3);
+    const [first, second, third] = await posts(3, { body: undefined });
     fetchSearch.mockResolvedValue({ value: { posts: [first, second, third], nextCursor: null }, reused: true, costUsd: 0 });
     fetchPost.mockImplementation(async (_ctx: unknown, url: string) => ({
-      value: [[first, second, third].find((post) => post.url === url)],
+      value: [await opened([first, second, third].find((post) => post.url === url)!)],
       reused: true,
       costUsd: 0,
     }));
@@ -181,8 +237,89 @@ describe.skipIf(!hasDatabase)("runScan against a database", () => {
     expect(stored.filter((one) => one.decision === "reject")).toHaveLength(2);
 
     generateStructured.mockClear();
+    // The second scan finds the same posts, and by now we hold their text.
+    fetchSearch.mockResolvedValue({
+      value: {
+        posts: [await opened(first), await opened(second), await opened(third)],
+        nextCursor: null,
+      },
+      reused: true,
+      costUsd: 0,
+    });
     await runScan(row.id, randomUUID());
     expect(generateStructured).not.toHaveBeenCalled();
+    expect(fetchPost).toHaveBeenCalledTimes(3);
+  });
+
+  it("never opens a post that arrived with its own text", async () => {
+    const row = await project();
+    const [only] = await posts(1);
+    fetchSearch.mockResolvedValue({ value: { posts: [only], nextCursor: null }, reused: true, costUsd: 0 });
+    model([only.id], (id) => assessment(id));
+
+    const outcome = await runScan(row.id, randomUUID());
+    expect(fetchPost).not.toHaveBeenCalled();
+    expect(outcome.leads).toBe(1);
+  });
+
+  it("spends the hydration budget only on the posts it still has to open", async () => {
+    const { limitsFor } = await import("@/lib/tiers");
+    const cap = limitsFor("free", false)!.hydrationPerScan;
+    const selfHosted = process.env.SELF_HOSTED;
+    process.env.SELF_HOSTED = "false";
+    try {
+      const row = await project();
+      const carried = await posts(cap + 1);
+      fetchSearch.mockResolvedValue({
+        value: { posts: carried, nextCursor: null },
+        reused: true,
+        costUsd: 0,
+      });
+      model(
+        carried.map((post) => post.id),
+        (id) => assessment(id),
+      );
+
+      await runScan(row.id, randomUUID());
+      expect(fetchPost).not.toHaveBeenCalled();
+      expect(await evaluations(row.id)).toHaveLength(cap + 1);
+    } finally {
+      process.env.SELF_HOSTED = selfHosted;
+    }
+  });
+
+  it("keeps a post the shared reading calls a seller away from the judge", async () => {
+    const row = await project();
+    const [only] = await posts(1);
+    fetchSearch.mockResolvedValue({ value: { posts: [only], nextCursor: null }, reused: true, costUsd: 0 });
+    fetchPost.mockResolvedValue({ value: [only], reused: true, costUsd: 0 });
+    model([only.id], (id) => assessment(id), () => reading({ speaker: "seller", asking: false }));
+
+    const outcome = await runScan(row.id, randomUUID());
+    const judged = generateStructured.mock.calls.filter((call) => call[0].purpose === "score");
+    expect(judged).toHaveLength(0);
+    expect(outcome.leads).toBe(0);
+    const stored = await evaluations(row.id);
+    expect(stored).toHaveLength(1);
+    expect(stored[0]?.decision).toBe("reject");
+    expect(stored[0]?.reasonCodes).toContain("seller_only");
+  });
+
+  it("reads one post once however many projects are watching it", async () => {
+    const [only] = await posts(1);
+    fetchSearch.mockResolvedValue({ value: { posts: [only], nextCursor: null }, reused: true, costUsd: 0 });
+    fetchPost.mockResolvedValue({ value: [only], reused: true, costUsd: 0 });
+    model([only.id], (id) => assessment(id));
+
+    const readings = () =>
+      generateStructured.mock.calls.filter((call) => call[0].purpose === "reading");
+
+    await runScan((await project()).id, randomUUID());
+    expect(readings()).toHaveLength(1);
+
+    generateStructured.mockClear();
+    await runScan((await project()).id, randomUUID());
+    expect(readings()).toHaveLength(0);
   });
 
   it("never triages, judges or stores a post Reddit has taken away", async () => {
@@ -367,7 +504,6 @@ describe.skipIf(!hasDatabase)("runScan against a database", () => {
         subreddit: "SaaS",
         author: "asker0",
         title: "Older form question",
-        body: "Our signup form needs conditional logic.",
         permalink: "/r/SaaS/comments/older/form/",
         score: 9,
         numComments: 2,
@@ -378,7 +514,6 @@ describe.skipIf(!hasDatabase)("runScan against a database", () => {
         subreddit: "SaaS",
         author: "asker1",
         title: "Newer form question",
-        body: "Our signup form needs conditional logic.",
         permalink: "/r/SaaS/comments/newer/form/",
         score: 1,
         numComments: 2,
@@ -391,7 +526,7 @@ describe.skipIf(!hasDatabase)("runScan against a database", () => {
       costUsd: 0,
     });
     fetchPost.mockImplementation(async (_ctx: unknown, url: string) => ({
-      value: [[older, younger].find((post) => post.url === url)],
+      value: [await opened([older, younger].find((post) => post.url === url)!)],
       reused: true,
       costUsd: 0,
     }));
@@ -403,7 +538,6 @@ describe.skipIf(!hasDatabase)("runScan against a database", () => {
             disposition: "read",
             priority: "medium",
             reasonCode: "explicit_ask",
-            reason: "asks for a form tool",
           })),
         };
       }

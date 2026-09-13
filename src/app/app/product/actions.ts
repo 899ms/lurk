@@ -22,7 +22,7 @@ export type ChipKind = "keyword" | "subreddit" | "competitor";
 /** What a person has decided about one row of the plan. */
 export type ChipState = "active" | "pinned" | "excluded";
 /** The lists read off the product page itself, editable by hand. */
-export type ListKind = "destination" | "phrasing" | "capability" | "exclusion";
+export type ListKind = "destination" | "phrasing" | "capability" | "exclusion" | "not_buyer";
 /** Every one of those except places, all of which are plain lists of phrases. */
 type TextListKind = Exclude<ListKind, "destination">;
 export type ProfileState = { error: string | null; saved: boolean };
@@ -316,21 +316,27 @@ type ProductLists = {
   phrasings: string[];
   capabilities: string[];
   exclusions: string[];
+  notBuyers: string[];
 };
 
-const TEXT_LIST: Record<TextListKind, "phrasings" | "capabilities" | "exclusions"> = {
+const TEXT_LIST: Record<
+  TextListKind,
+  "phrasings" | "capabilities" | "exclusions" | "notBuyers"
+> = {
   phrasing: "phrasings",
   capability: "capabilities",
   exclusion: "exclusions",
+  not_buyer: "notBuyers",
 };
 
 /**
- * What the product can and cannot do are facts the scorer judges against, so
- * editing one bumps the profile version exactly as a competitor edit does. A
- * place or a phrasing only changes what discovery asks next, and no verdict
- * ever rested on it, so those are saved without invalidating anything.
+ * What the product can and cannot do, and who is not its buyer, are facts the
+ * scorer judges against, so editing one bumps the profile version exactly as a
+ * competitor edit does. A place or a phrasing only changes what discovery asks
+ * next, and no verdict ever rested on it, so those are saved without
+ * invalidating anything.
  */
-const JUDGED: ListKind[] = ["capability", "exclusion"];
+const JUDGED: ListKind[] = ["capability", "exclusion", "not_buyer"];
 
 function productLists(project: typeof projects.$inferSelect): ProductLists {
   return {
@@ -338,6 +344,7 @@ function productLists(project: typeof projects.$inferSelect): ProductLists {
     phrasings: parseTextList(project.problemPhrasings),
     capabilities: parseTextList(project.capabilities),
     exclusions: parseTextList(project.exclusions),
+    notBuyers: parseTextList(project.notBuyers),
   };
 }
 
@@ -349,6 +356,7 @@ async function saveLists(projectId: string, kind: ListKind, lists: ProductLists)
       problemPhrasings: lists.phrasings,
       capabilities: lists.capabilities,
       exclusions: lists.exclusions,
+      notBuyers: lists.notBuyers,
     })
     .where(eq(projects.id, projectId));
   if (JUDGED.includes(kind)) {
@@ -358,10 +366,10 @@ async function saveLists(projectId: string, kind: ListKind, lists: ProductLists)
 }
 
 /**
- * Adds a place, a phrasing, a capability or an exclusion the page never said.
- * Places and phrasings feed the next round of discovery queries; capabilities
- * and exclusions go to the scorer. This is how a person teaches the app what
- * their own page does not spell out.
+ * Adds a place, a phrasing, a capability, an exclusion or a person who is not
+ * a buyer, none of which the page said. Places and phrasings feed the next
+ * round of discovery queries; the rest go to the scorer. This is how a person
+ * teaches the app what their own page does not spell out.
  */
 export async function addListItemAction(
   kind: ListKind,
@@ -394,7 +402,7 @@ export async function addListItemAction(
   }
 }
 
-/** Removes one place, phrasing, capability or exclusion from the project. */
+/** Removes one item from any of the lists a person edits by hand. */
 export async function removeListItemAction(
   kind: ListKind,
   projectId: string,

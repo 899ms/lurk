@@ -11,6 +11,8 @@ export type RawPost = {
   title: string;
   author?: string;
   body?: string;
+  /** Search results carry the post's own text under this name. */
+  selftext?: string;
   score?: number;
   numComments?: number;
   permalink?: string;
@@ -50,19 +52,20 @@ function absoluteLink(link: string | undefined, fallback = ""): string {
 
 function postValues(post: RawPost) {
   const now = new Date();
+  const body = post.body ?? post.selftext;
   return {
     id: bareId(post.id),
     subreddit: post.subreddit,
     author: post.author ?? null,
     title: post.title,
-    body: post.body || null,
+    body: body || null,
     url: absoluteLink(post.permalink, post.url ?? ""),
     score: post.score ?? null,
     numComments: post.numComments ?? null,
     imageUrl: post.image ?? null,
     createdAt: at(post.createdUtc),
     fetchedAt: now,
-    bodyObservedAt: post.body ? now : null,
+    bodyObservedAt: body ? now : null,
   };
 }
 
@@ -73,13 +76,51 @@ function postValues(post: RawPost) {
  * text stable, which is what lets a stored verdict be reused. And
  * `bodyObservedAt` only moves on a fetch that really carried the text.
  */
+/**
+ * A stored post turned back into the listing shape it came from, so a caller
+ * holding it across a long run can write it again. A backfill keeps its posts
+ * in memory while it judges a year of them, and the retention job can delete an
+ * unreferenced one in that window, so the backfill re-persists what it found
+ * before it points a lead or a source at it. The url is already absolute, so it
+ * serves as the permalink `postValues` resolves.
+ */
+export function asRawPost(post: StoredPost): RawPost {
+  return {
+    id: post.id,
+    subreddit: post.subreddit,
+    author: post.author ?? undefined,
+    title: post.title,
+    body: post.body ?? undefined,
+    url: post.url,
+    permalink: post.url,
+    score: post.score ?? undefined,
+    numComments: post.numComments ?? undefined,
+    image: post.imageUrl ?? undefined,
+    createdUtc: Math.floor(post.createdAt.getTime() / 1000),
+  };
+}
+
+/**
+ * Stores a page of posts, and hands them back in the order they arrived in,
+ * because a run's stored ranking is that order.
+ *
+ * The rows go to Postgres sorted by id. Two concurrent walks land on the same
+ * post in different orders, and an upsert takes its index locks row by row in
+ * the order the statement lists them: a sweep of 2026-09-10 deadlocked two of
+ * its ten walks against each other and died. Sorting means every statement in
+ * the process asks for the same rows in the same order, which is the ordering
+ * that makes a deadlock impossible rather than unlikely.
+ */
 export async function upsertPosts(posts: RawPost[]): Promise<StoredPost[]> {
   if (posts.length === 0) {
     return [];
   }
-  return db()
+  const values = posts.map(postValues);
+  const order = new Map(values.map((row, index) => [row.id, index]));
+  const sorted = [...values].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const stored = await db()
     .insert(redditPosts)
-    .values(posts.map(postValues))
+    .values(sorted)
     .onConflictDoUpdate({
       target: redditPosts.id,
       set: {
@@ -93,6 +134,9 @@ export async function upsertPosts(posts: RawPost[]): Promise<StoredPost[]> {
       },
     })
     .returning();
+  return stored.sort(
+    (a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0),
+  );
 }
 
 /** Records which posts a run produced, in the order the upstream ranked them. */

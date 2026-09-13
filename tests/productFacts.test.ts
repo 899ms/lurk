@@ -85,6 +85,78 @@ describe.skipIf(!process.env.DATABASE_URL)("capabilities and exclusions", () => 
   });
 });
 
+/**
+ * Who is not a buyer is the only false-positive control the profile has: the
+ * judge is told the personas that share this product's vocabulary and never
+ * buy, and a persona edit invalidates verdicts exactly as a capability does.
+ */
+describe.skipIf(!process.env.DATABASE_URL)("who is not a buyer", () => {
+  it("reaches the scan's product text as its own line", async () => {
+    const { user, project, db, schema } = await fixture({
+      notBuyers: ["students looking for a free plan"],
+    });
+    const { loadScanProject } = await import("@/lib/scan/project");
+
+    const loaded = await loadScanProject(project.id);
+    expect(loaded?.productText).toContain("Not a buyer: students looking for a free plan");
+    await db().delete(schema.users).where(eq(schema.users.id, user.id));
+  });
+
+  it("says no such line when the page named none", async () => {
+    const { user, project, db, schema } = await fixture({});
+    const { loadScanProject } = await import("@/lib/scan/project");
+
+    const loaded = await loadScanProject(project.id);
+    expect(loaded?.productText).not.toContain("Not a buyer:");
+    await db().delete(schema.users).where(eq(schema.users.id, user.id));
+  });
+
+  it("is saved on its own column and judges everything again when edited", async () => {
+    const { user, project, db, schema } = await fixture({});
+    const { addListItemAction, removeListItemAction } = await import(
+      "@/app/app/product/actions"
+    );
+
+    const version = async () =>
+      (await db().select().from(schema.projects).where(eq(schema.projects.id, project.id)))[0]
+        .profileVersion;
+
+    await addListItemAction("not_buyer", project.id, "students looking for a free plan");
+    expect(await version()).toBe(2);
+    expect((await loadedLists(db, schema, project.id)).notBuyers).toEqual([
+      "students looking for a free plan",
+    ]);
+
+    await removeListItemAction("not_buyer", project.id, "students looking for a free plan");
+    expect(await version()).toBe(3);
+    expect((await loadedLists(db, schema, project.id)).notBuyers).toEqual([]);
+    await db().delete(schema.users).where(eq(schema.users.id, user.id));
+  });
+});
+
+/**
+ * A competitor a person excluded on the Product page is a decision, not a
+ * suggestion: the scan must neither read it nor name it to the judge.
+ */
+describe.skipIf(!process.env.DATABASE_URL)("an excluded competitor", () => {
+  it("is left out of the competitors the scan reads and out of the product text", async () => {
+    const { user, project, db, schema } = await fixture({});
+    await db()
+      .insert(schema.projectCompetitors)
+      .values([
+        { projectId: project.id, name: "Hotelages", state: "active" },
+        { projectId: project.id, name: "Booking", state: "excluded" },
+      ]);
+    const { loadScanProject } = await import("@/lib/scan/project");
+
+    const loaded = await loadScanProject(project.id);
+    expect(loaded?.competitors).toEqual(["Hotelages"]);
+    expect(loaded?.productText).toContain("Competitors: Hotelages");
+    expect(loaded?.productText).not.toContain("Booking");
+    await db().delete(schema.users).where(eq(schema.users.id, user.id));
+  });
+});
+
 async function loadedLists(
   db: typeof import("@/db")["db"],
   schema: typeof import("@/db/schema"),

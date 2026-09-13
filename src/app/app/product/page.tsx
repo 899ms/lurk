@@ -82,7 +82,17 @@ export default async function ProductPage({ searchParams }: ProductPageProps) {
     source: string;
     state: string;
     evidence: number;
-  }) => ({ source: row.source, state: row.state, evidence: row.evidence });
+    freshCandidates: number;
+    freshLeads: number;
+    lastCoveredAt: Date | null;
+  }) => ({
+    source: row.source,
+    state: row.state,
+    evidence: row.evidence,
+    freshCandidates: row.freshCandidates,
+    freshLeads: row.freshLeads,
+    lastCoveredAt: row.lastCoveredAt,
+  });
 
   return (
     <div className="flex max-w-3xl flex-col gap-6">
@@ -151,6 +161,18 @@ export default async function ProductPage({ searchParams }: ProductPageProps) {
         kind="exclusion"
         projectId={project.id}
         items={parseTextList(project.exclusions).map((phrase) => ({
+          value: phrase,
+          sourceText: null,
+        }))}
+      />
+
+      <ListEditor
+        title="Who is not a buyer"
+        hint="People who talk like your buyers but never buy. It keeps the wrong person out of the feed."
+        placeholder="students looking for a free plan"
+        kind="not_buyer"
+        projectId={project.id}
+        items={parseTextList(project.notBuyers).map((phrase) => ({
           value: phrase,
           sourceText: null,
         }))}

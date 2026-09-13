@@ -15,7 +15,8 @@ fee. Self-hosting has no limits at all.
   gives you the pain, the solution, who buys, the subreddits they post in and the searches
   they run. Everything is editable.
 - **Scans on a schedule.** Per keyword and per tracked subreddit, then a title-level triage,
-  then it opens only the threads worth reading, then the comments on the best of those. Cost
+  then it opens only the threads worth reading, then one product-agnostic reading of each that
+  says whether anybody is asking for anything, then the comments on the best of those. Cost
   follows quality, not volume.
 - **Scores with a written reason.** 0-100 from fit, intent and how alive the thread is, plus
   an intent stage, the phrase that matched, and a seller-side flag for the people who are
