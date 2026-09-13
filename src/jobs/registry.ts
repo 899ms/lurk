@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { jobs, projects } from "@/db/schema";
 import { CADENCE_MS } from "@/lib/alerts/select";
 import { runDiscoveryRefresh } from "@/lib/discovery/refresh";
+import { runInitialDiscovery } from "@/lib/discovery/initial";
 import { deleteExpiredPosts } from "@/lib/retention";
 import { discoveryBudget } from "@/lib/discovery/run";
 import { runBackfill } from "@/lib/scan/backfill";
@@ -56,6 +57,18 @@ export const JOB_HANDLERS: Record<string, JobHandler> = {
     const outcome = await runBackfill(job.projectId, job.id);
     await regroupLeads(job.projectId, outcome.leads);
   },
+  /**
+   * The one job a brand new project starts with. Creating a project reads the
+   * product page and nothing else, so this is where the plan comes from: the
+   * whole first discovery, the communities it names, and the first jobs of the
+   * project's life. It queues them once, whatever else queues it.
+   */
+  discovery_initial: async (job) => {
+    if (!job.projectId) {
+      throw new Error("An initial discovery needs a project");
+    }
+    await runInitialDiscovery(job.projectId, job.id);
+  },
   discovery_refresh: async (job) => {
     if (!job.projectId) {
       throw new Error("A discovery refresh needs a project");
@@ -105,7 +118,8 @@ async function discoveryRefreshDaysFor(projectId: string): Promise<number> {
  */
 export async function nextRunAt(job: Job): Promise<Date | null> {
   const now = Date.now();
-  if ((job.kind === "scan" || job.kind === "backfill") && job.projectId) {
+  const scanCadence = job.kind === "scan" || job.kind === "backfill" || job.kind === "discovery_initial";
+  if (scanCadence && job.projectId) {
     return new Date(now + (await scanIntervalHoursFor(job.projectId)) * HOUR_MS);
   }
   if (job.kind === "discovery_refresh" && job.projectId) {

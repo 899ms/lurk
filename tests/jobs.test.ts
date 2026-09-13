@@ -370,28 +370,37 @@ describe.skipIf(!process.env.DATABASE_URL)("the job queue against a database", (
     await db().delete(users).where(eq(users.id, user.id));
   });
 
-  it("seeds a scan for a project that has none waiting", async () => {
-    const { db, jobs, users, user, project } = await fixture();
+  it("seeds a scan for a project that has been set up, and the setup for one that has not", async () => {
+    const { db, jobs, projects, users, user, project } = await fixture();
     const { seedProjectScans } = await import("@/jobs/scheduler");
-    const { and, eq, inArray, notInArray } = await import("drizzle-orm");
+    const { eq, inArray } = await import("drizzle-orm");
 
-    const before = await db().select({ id: jobs.id }).from(jobs).where(eq(jobs.kind, "scan"));
-    const beforeIds = before.map((row) => row.id);
+    await db()
+      .update(projects)
+      .set({ discoveredAt: new Date() })
+      .where(eq(projects.id, project.id));
+    const [fresh] = await db()
+      .insert(projects)
+      .values({ userId: user.id, name: "Never discovered" })
+      .returning();
+
     await seedProjectScans();
-    const added = await db()
-      .select()
-      .from(jobs)
-      .where(
-        beforeIds.length === 0
-          ? eq(jobs.kind, "scan")
-          : and(eq(jobs.kind, "scan"), notInArray(jobs.id, beforeIds)),
-      );
 
-    expect(added.filter((row) => row.projectId === project.id)).toHaveLength(1);
+    const kinds = async (projectId: string) =>
+      (await db().select().from(jobs).where(eq(jobs.projectId, projectId)))
+        .map((row) => row.kind)
+        .sort();
+    expect(await kinds(project.id)).toEqual([
+      "competitor_scan",
+      "discovery_refresh",
+      "scan",
+      "seo_refresh",
+    ]);
+    expect(await kinds(fresh.id)).toEqual(["discovery_initial"]);
 
     await db()
       .delete(jobs)
-      .where(inArray(jobs.id, added.map((row) => row.id)));
+      .where(inArray(jobs.projectId, [project.id, fresh.id]));
     await db().delete(users).where(eq(users.id, user.id));
   });
 });

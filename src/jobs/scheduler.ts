@@ -40,7 +40,8 @@ async function pump(workers: number): Promise<void> {
 }
 
 /**
- * Queues every recurring project job that has none waiting. A job whose process
+ * Queues the job a project is missing: the initial discovery for one that has
+ * never had a plan, or every recurring job that has none waiting. A job whose process
  * died left no successor behind, so without this a project stops being scanned,
  * and stops learning where its buyers ask, until somebody presses a button. The
  * competitor scan and the SEO refresh are here for the same reason and one
@@ -48,8 +49,20 @@ async function pump(workers: number): Promise<void> {
  * one at all, so boot is the only place it can pick them up.
  */
 export async function seedProjectScans(): Promise<void> {
-  const rows = await db().select({ id: projects.id }).from(projects);
+  const rows = await db()
+    .select({ id: projects.id, discoveredAt: projects.discoveredAt })
+    .from(projects);
   for (const row of rows) {
+    if (!row.discoveredAt) {
+      /**
+       * A project whose first discovery never finished has no plan at all, so
+       * a scan, an SEO pass or a competitor scan would have nothing to read
+       * and would spend a person's money proving it. The initial discovery
+       * queues all of those itself once it has a plan.
+       */
+      await enqueueOnce("discovery_initial", new Date(), row.id);
+      continue;
+    }
     await enqueueOnce("scan", new Date(), row.id);
     await enqueueOnce("discovery_refresh", new Date(), row.id);
     await enqueueOnce("competitor_scan", new Date(), row.id);

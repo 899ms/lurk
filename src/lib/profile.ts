@@ -1,15 +1,12 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { projectSubreddits, projects, subreddits } from "@/db/schema";
-import { enqueueJob } from "@/jobs/enqueue";
 import { clientForUser } from "./anyapi";
-import { discoveryBudget, runDiscovery } from "./discovery/run";
 import { generateStructured } from "./llm";
 import { PROFILE_SYSTEM, PROMO_POLICY_SYSTEM } from "./prompts";
 import { normalizeQuery, recordUsage } from "./reddit/fetch";
 import { fetchSubredditDetails } from "./reddit/skus";
-import { tierForUser } from "./tier";
 import { assertHouseDataUnderCap } from "./usage";
 
 /** How long a subreddit sidebar is reused before we buy it again. */
@@ -37,7 +34,7 @@ const profileSchema = z.object({
 
 export type ProductProfile = z.infer<typeof profileSchema>;
 
-export type ProfileStep = "scrape" | "profile" | "discovery" | "subreddits" | "done";
+export type ProfileStep = "scrape" | "profile" | "done";
 
 /**
  * Reads the product page. It buys no shared run, so it counts against the house
@@ -102,7 +99,7 @@ async function resolveSubreddit(
  * will actually read. Discovery has already proved each one carries relevant
  * threads, so this spends only on communities that earned a slot.
  */
-async function resolveActiveSubreddits(projectId: string, userId: string): Promise<string[]> {
+export async function resolveActiveSubreddits(projectId: string, userId: string): Promise<string[]> {
   const rows = await db()
     .select()
     .from(projectSubreddits)
@@ -122,23 +119,29 @@ async function resolveActiveSubreddits(projectId: string, userId: string): Promi
   return resolved;
 }
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-export type BuiltProfile = ProductProfile & { subreddits: string[] };
+export type ProfileOptions = {
+  /**
+   * Whether the facts written here invalidate every verdict made against the
+   * old ones. A rebuild does; the first build of a brand new project has no
+   * verdicts to invalidate. The bump is written in the same statement as the
+   * facts, so no job can ever read the new facts under the old version.
+   */
+  rejudge?: boolean;
+};
 
 /**
- * Reads the product's own page for what the product is, then learns from
- * Google where and how its buyers ask, and publishes the plan the scan spends
- * on. The page decides the facts; the evidence decides the plan; the first
- * weekly delta is booked before this returns.
+ * Reads the product's own page and writes what the page says the product is.
+ * That is all it does: where and how the buyers ask is learned by the initial
+ * discovery job, which the caller queues, because reading Google takes minutes
+ * and nobody should hold a browser open for it.
  */
 export async function buildProfile(
   projectId: string,
   userId: string,
   url: string,
+  options: ProfileOptions = {},
   onStep?: (step: ProfileStep) => Promise<void> | void,
-): Promise<BuiltProfile> {
-  const { limits } = await tierForUser(userId);
+): Promise<ProductProfile> {
   await onStep?.("scrape");
   const page = await scrapeProduct(projectId, userId, url);
 
@@ -171,46 +174,12 @@ export async function buildProfile(
       notBuyers: profile.notBuyers,
       destinations: profile.destinations,
       problemPhrasings: profile.problemPhrasings,
+      ...(options.rejudge
+        ? { profileVersion: sql`${projects.profileVersion} + 1` }
+        : {}),
     })
     .where(eq(projects.id, projectId));
 
-  await onStep?.("discovery");
-  await runDiscovery({
-    projectId,
-    userId,
-    facts: {
-      name: profile.name,
-      pain: profile.pain,
-      solution: profile.solution,
-      targetUsers: profile.targetUsers,
-      serviceGeography: profile.serviceGeography,
-      budgetFit: profile.budgetFit,
-      capabilities: profile.capabilities,
-      exclusions: profile.exclusions,
-    },
-    destinations: profile.destinations,
-    problemPhrasings: profile.problemPhrasings,
-    limits,
-  });
-
-  await onStep?.("subreddits");
-  const resolved = await resolveActiveSubreddits(projectId, userId);
-
-  await enqueueJob(
-    "discovery_refresh",
-    projectId,
-    new Date(Date.now() + discoveryBudget(limits).refreshDays * DAY_MS),
-  );
-  /**
-   * The three jobs that fill the project's first screens: a one-time sweep of a
-   * year of Reddit's own search, the Google pass that fills the Reddit SEO tab,
-   * then the scan that fills the competitors tab. All are queued now, in that
-   * order, so none of them waits for a person. Project creation is the one
-   * place these belong: the scheduler seeds projects that already exist.
-   */
-  await enqueueJob("backfill", projectId);
-  await enqueueJob("seo_refresh", projectId);
-  await enqueueJob("competitor_scan", projectId);
   await onStep?.("done");
-  return { ...profile, subreddits: resolved };
+  return profile;
 }
