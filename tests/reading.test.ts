@@ -52,19 +52,25 @@ describe("what the shared reading keeps from the judge", () => {
     expect(split.cut).toEqual([]);
   });
 
+  /**
+   * A reading that is not a buyer asking for something never reaches the judge.
+   * What it becomes is the gates' business: a settled disqualifier rejects, and
+   * a speaker the reading could not place while it still claims they are asking
+   * is held for review, which is the rejection invariant in gates.ts.
+   */
   it.each([
-    ["seller", true, "seller_only"],
-    ["helper", true, "helper_only"],
-    ["discussion", true, "no_active_need"],
-    ["buyer", false, "no_active_need"],
-    ["unknown", true, "insufficient_evidence"],
-  ])("keeps a %s from the judge as a rejection", (speaker, asking, code) => {
+    ["seller", true, "seller_only", "reject"],
+    ["helper", true, "helper_only", "reject"],
+    ["buyer", false, "no_active_need", "reject"],
+    ["unknown", true, "insufficient_evidence", "reject"],
+    ["discussion", true, "no_active_need", "review"],
+  ])("keeps a %s from the judge", (speaker, asking, code, decision) => {
     const split = splitByReading([post("p1")], new Map([["p1", read(speaker, asking)]]));
     expect(split.toJudge).toEqual([]);
     expect(split.cut).toHaveLength(1);
     expect(split.cut[0].id).toBe("p1");
-    expect(split.cut[0].decision).toBe("reject");
-    expect(split.cut[0].reasonCodes).toContain(code);
+    expect(split.cut[0].decision).toBe(decision);
+    expect(split.cut[0].reasonCode).toBe(code);
   });
 
   it("judges a post the reading could not answer for", () => {

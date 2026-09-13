@@ -83,6 +83,16 @@ export function describeItem(item: ScorableItem): string {
 }
 
 /**
+ * The target person's own words, cut and uncut. A need quote is checked against
+ * this and never against the whole formatted candidate, because that string
+ * carries the parent post a comment is replying to: a commenter who quotes the
+ * parent has produced evidence of somebody else's need, not their own.
+ */
+export function ownTexts(item: ScorableItem): string[] {
+  return [item.title, truncateBody(item.body), item.body].map(plainTypography);
+}
+
+/**
  * The same fields with nothing cut. A quote the model took from either side of
  * an elision is still the person's own words, so the validator checks this text
  * as well as the excerpt the model was shown.

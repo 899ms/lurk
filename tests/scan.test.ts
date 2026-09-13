@@ -39,11 +39,8 @@ function assessment(patch: Partial<Assessment> = {}): Assessment {
     fit: 4,
     intent: 3,
     stage: "solution_seeking",
-    requirements: [],
-    answerCoverage: "none",
-    unansweredAngle: null,
     decision: "qualify",
-    reasonCodes: ["supported_open_need"],
+    reasonCode: "supported_open_need",
     needEvidence: { quote: "it has to take payments" },
     reason: "Wants a form that takes payments.",
     ...patch,
@@ -73,42 +70,54 @@ describe("engagement", () => {
 
 describe("the qualification gates", () => {
   it("does not let a live thread and top intent pay for a wrong-job fit", () => {
-    const judged = judge(assessment({ fit: 1, intent: 4 }), { ...item, ageHours: 1, numComments: 0 });
+    const judged = judge(assessment({ fit: 0, intent: 4 }), { ...item, ageHours: 1, numComments: 0 });
     expect(judged.engagement).toBe(4);
     expect(judged.score).toBeGreaterThan(50);
     expect(judged.decision).toBe("reject");
-    expect(judged.reasonCodes).toContain("wrong_job");
+    expect(judged.reasonCode).toBe("wrong_job");
   });
 
   it("does not qualify a need the person says is resolved", () => {
     const judged = judge(assessment({ needState: "resolved" }), item);
     expect(judged.decision).toBe("reject");
-    expect(judged.reasonCodes).toContain("resolved");
+    expect(judged.reasonCode).toBe("resolved");
   });
 
   it("treats a helper as neither a seller nor a lead", () => {
     const judged = judge(assessment({ relationship: "helper" }), item);
     expect(judged.sellerSide).toBe(false);
     expect(judged.decision).toBe("reject");
-    expect(judged.reasonCodes).toContain("helper_only");
+    expect(judged.reasonCode).toBe("helper_only");
   });
 
-  it("rejects an unmet hard requirement the person named", () => {
-    const judged = judge(
-      assessment({
-        requirements: [
-          {
-            requirement: "Kafka topic throughput alerts",
-            importance: "hard",
-            satisfaction: "unmet",
-            targetEvidence: { quote: "it has to take payments" },
-          },
-        ],
-      }),
-      item,
-    );
-    expect(judged.decision).toBe("reject");
-    expect(judged.reasonCodes).toContain("hard_requirement_mismatch");
+  it("rejects on each settled disqualifier, and names it", () => {
+    const settled = [
+      [{ relationship: "seller" as const }, "seller_only"],
+      [{ relationship: "helper" as const }, "helper_only"],
+      [{ needState: "resolved" as const }, "resolved"],
+      [{ needState: "no_active_need" as const }, "no_active_need"],
+      [{ fit: 0 }, "wrong_job"],
+      [
+        { relationship: "unknown" as const, needState: "unknown" as const, fit: null },
+        "insufficient_evidence",
+      ],
+    ] as const;
+    for (const [patch, code] of settled) {
+      const judged = judge(assessment(patch), item);
+      expect([patch, judged.decision]).toEqual([patch, "reject"]);
+      expect(judged.reasonCode).toBe(code);
+    }
+  });
+
+  it("holds a model rejection with no settled disqualifier behind it for review", () => {
+    const judged = judge(assessment({ decision: "reject", reasonCode: "wrong_audience" }), item);
+    expect(judged.decision).toBe("review");
+  });
+
+  it("holds category overlap alone for review rather than rejecting the person", () => {
+    const judged = judge(assessment({ fit: 1, intent: 4 }), item);
+    expect(judged.decision).toBe("review");
+    expect(judged.reasonCode).toBe("wrong_audience");
   });
 
   it("qualifies a buyer whose open need the product covers", () => {
@@ -125,23 +134,22 @@ describe("the qualification gates", () => {
         fit: null,
         intent: 0,
         decision: "review",
-        reasonCodes: ["insufficient_evidence"],
+        reasonCode: "insufficient_evidence",
         needEvidence: null,
       }),
       item,
     );
     expect(judged.decision).toBe("reject");
-    expect(judged.reasonCodes).toContain("insufficient_evidence");
+    expect(judged.reasonCode).toBe("insufficient_evidence");
   });
 
   it("rejects a person it cannot place once their need or fit is settled anyway", () => {
     for (const patch of [
       { relationship: "unknown" as const, needState: "no_active_need" as const, fit: 0 },
       { relationship: "unknown" as const, needState: "open" as const, fit: 0 },
-      { relationship: "discussion" as const, needState: "unknown" as const, fit: null },
     ]) {
       const judged = judge(
-        assessment({ ...patch, decision: "review", reasonCodes: ["insufficient_evidence"] }),
+        assessment({ ...patch, decision: "review", reasonCode: "insufficient_evidence" }),
         item,
       );
       expect(judged.decision).toBe("reject");
@@ -153,6 +161,7 @@ describe("the qualification gates", () => {
       { relationship: "buyer" as const, needState: "unknown" as const, fit: null },
       { relationship: "unknown" as const, needState: "evaluating" as const, fit: null },
       { relationship: "unknown" as const, needState: "unknown" as const, fit: 2 },
+      { relationship: "discussion" as const, needState: "unknown" as const, fit: null },
     ]) {
       const judged = judge(assessment({ ...patch, decision: "review" }), item);
       expect(judged.decision).toBe("review");
@@ -266,7 +275,7 @@ describe("judging a batch", () => {
     });
     const judged = await judgeItems("project-1", "A form builder", [typography]);
     expect(judged[0].decision).toBe("qualify");
-    expect(judged[0].reasonCodes).not.toContain("insufficient_evidence");
+    expect(judged[0].reasonCode).not.toBe("insufficient_evidence");
   });
 
   it("keeps a lead whose quote the head-and-tail excerpt cut in half", async () => {
@@ -283,52 +292,27 @@ describe("judging a batch", () => {
     expect(judged[0].decision).toBe("qualify");
   });
 
-  it("drops a met requirement the model mis-quoted instead of holding the lead", async () => {
+  it("holds a commenter whose only quote comes from the post they are answering", async () => {
+    const commenter: ScorableItem = {
+      ...item,
+      id: "c1",
+      body: "Same boat here, following this thread.",
+      parentBody: "Our signup form needs conditional logic and it has to take payments.",
+    };
     generateStructured.mockReset();
     generateStructured.mockResolvedValueOnce({
       items: [
         assessment({
-          requirements: [
-            {
-              requirement: "conditional logic",
-              importance: "soft",
-              satisfaction: "met",
-              targetEvidence: { quote: "needs conditional logic" },
-            },
-            {
-              requirement: "payments",
-              importance: "hard",
-              satisfaction: "met",
-              targetEvidence: { quote: "it has to take paymentse2" },
-            },
-          ],
+          id: "c1",
+          needEvidence: { quote: "it has to take payments" },
         }),
       ],
     });
-    const judged = await judgeItems("project-1", "A form builder", [item]);
-    expect(judged[0].decision).toBe("qualify");
-    expect(judged[0].requirements.map((need) => need.requirement)).toEqual(["conditional logic"]);
-  });
-
-  it("keeps an unmet hard requirement whatever its quote, so it still rejects", async () => {
-    generateStructured.mockReset();
-    generateStructured.mockResolvedValueOnce({
-      items: [
-        assessment({
-          requirements: [
-            {
-              requirement: "Kafka alerts",
-              importance: "hard",
-              satisfaction: "unmet",
-              targetEvidence: { quote: "we need Kafka alertse2" },
-            },
-          ],
-        }),
-      ],
-    });
-    const judged = await judgeItems("project-1", "A form builder", [item]);
-    expect(judged[0].decision).toBe("reject");
-    expect(judged[0].reasonCodes).toContain("hard_requirement_mismatch");
+    generateStructured.mockResolvedValueOnce({ items: [] });
+    const judged = await judgeItems("project-1", "A form builder", [commenter]);
+    expect(describeItem(commenter)).toContain("it has to take payments");
+    expect(judged[0].decision).toBe("review");
+    expect(judged[0].reasonCode).toBe("insufficient_evidence");
   });
 
   it("sends a judgement whose quote is not in the supplied text to review", async () => {
@@ -339,7 +323,7 @@ describe("judging a batch", () => {
     generateStructured.mockResolvedValueOnce({ items: [] });
     const judged = await judgeItems("project-1", "A form builder", [item]);
     expect(judged[0].decision).toBe("review");
-    expect(judged[0].reasonCodes).toContain("insufficient_evidence");
+    expect(judged[0].reasonCode).toBe("insufficient_evidence");
   });
 });
 

@@ -170,11 +170,9 @@ function notAsking(reading: Reading): Assessment {
     fit: null,
     intent: null,
     stage: "none",
-    requirements: [],
-    answerCoverage: "unknown",
-    unansweredAngle: null,
     decision: "reject",
-    reasonCodes: [],
+    // Every reading that reaches here fails a gate, so the gate names it.
+    reasonCode: "insufficient_evidence",
     needEvidence: null,
     reason: `A first reading of this post found ${SPEAKER_PHRASE[reading.speaker]}, so it was not scored against the product.`,
   };
