@@ -9,12 +9,10 @@ import { SeoFilters } from "@/components/seo/SeoFilters";
 import { lastRunJob, nextQueuedJob } from "@/jobs/enqueue";
 import { requireLocalUser } from "@/lib/auth";
 import { activeProject } from "@/lib/projects";
-import { normalizeQuery } from "@/lib/reddit/fetch";
 import {
   listOpportunities,
   NO_PHRASINGS_PROGRESS,
   seoFacets,
-  volumesFor,
   type SeoRow,
 } from "@/lib/seo/read";
 
@@ -81,7 +79,6 @@ export default async function SeoPage({ searchParams }: SeoPageProps) {
   const nothingToLookUp = Boolean(last?.finishedAt) && last?.progress === NO_PHRASINGS_PROGRESS;
   const grouped = byPhrasing(rows);
   const phrasings = [...grouped.keys()];
-  const volumes = await volumesFor(phrasings);
 
   return (
     <div className="flex flex-col gap-5">
@@ -111,7 +108,6 @@ export default async function SeoPage({ searchParams }: SeoPageProps) {
             <KeywordSection
               key={phrasing}
               keyword={phrasing}
-              monthlyVolume={volumes.get(normalizeQuery(phrasing)) ?? null}
               threads={grouped.get(phrasing) ?? []}
             />
           ))}

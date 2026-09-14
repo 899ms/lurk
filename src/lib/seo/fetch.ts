@@ -1,16 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { asc, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { keywordVolumes, serpResults } from "@/db/schema";
+import { serpResults } from "@/db/schema";
 import {
   fetchShared,
   normalizeQuery,
-  recordUsage,
   type FetchContext,
   type FetchKind,
   type SharedResult,
 } from "@/lib/reddit/fetch";
-import { assertHouseDataUnderCap } from "@/lib/usage";
 import { redditResults, type GoogleResult } from "./links";
 
 export type StoredResult = typeof serpResults.$inferSelect;
@@ -96,49 +94,4 @@ export async function fetchRankingThreads(
   maxAgeMs: number,
 ): Promise<SharedResult<StoredResult[]>> {
   return fetchGoogleThreads(ctx, googleQuery(keyword), maxAgeMs);
-}
-
-/**
- * Monthly search volume for every keyword in one call. This endpoint costs a
- * hundred times a Reddit call, so it is asked once per refresh for the whole
- * list and never once per keyword, and because it stores no shared run it has
- * to reach the house cap through the ledger and the same seam.
- */
-export async function fetchKeywordVolumes(
-  ctx: FetchContext,
-  keywords: string[],
-): Promise<number> {
-  if (keywords.length === 0) {
-    return 0;
-  }
-  if (ctx.funded.funding === "house") {
-    await assertHouseDataUnderCap();
-  }
-  const { result: res, requestId } = await ctx.funded.call(() =>
-    ctx.funded.client.seo.searchVolume({ keywords }),
-  );
-  const rows = res.output.found ? (res.output.data?.keywords ?? []) : [];
-  if (rows.length > 0) {
-    await db()
-      .insert(keywordVolumes)
-      .values(
-        rows.map((row) => ({
-          id: randomUUID(),
-          keyword: normalizeQuery(row.keyword),
-          geo: SEO_GEO,
-          monthlyVolume: row.searchVolume ?? null,
-          fetchedAt: new Date(),
-        })),
-      );
-  }
-  await recordUsage({
-    projectId: ctx.projectId,
-    sku: "seo.search_volume",
-    costUsd: res.costUsd,
-    requestId,
-    searchRunId: null,
-    fundedBy: ctx.funded.funding,
-    reused: false,
-  });
-  return res.costUsd;
 }

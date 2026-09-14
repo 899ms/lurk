@@ -69,18 +69,16 @@ describe("phrasing cap", () => {
     expect(settings.phrasings).toHaveLength(10);
     expect(settings.phrasings[0]).toBe("way of asking 0");
     expect(settings.refreshDays).toBe(7);
-    expect(settings.searchVolume).toBe(false);
   });
 
-  it("caps nothing for a connected wallet and buys volume", () => {
+  it("caps nothing for a connected wallet", () => {
     const settings = seoSettings(TIERS.connected, phrasings);
     expect(settings.phrasings).toHaveLength(12);
-    expect(settings.searchVolume).toBe(true);
   });
 
   it("treats a self-hosted instance like a connected wallet", () => {
     expect(seoSettings(null, phrasings).phrasings).toHaveLength(12);
-    expect(seoSettings(null, phrasings).searchVolume).toBe(true);
+    expect(seoSettings(null, phrasings).refreshDays).toBe(1);
   });
 });
 

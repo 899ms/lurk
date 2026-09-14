@@ -62,7 +62,7 @@ export class HouseDataCapReachedError extends Error {
 /**
  * What the house key has spent on AnyAPI since midnight UTC, across every
  * project: the shared runs, plus the calls that produce no shared run at all,
- * which is the product page read and the keyword volume lookup. A reused run
+ * which is the product page read. A reused run
  * costs nothing and is stored as no new run, so nothing is counted twice.
  */
 export async function houseDataSpendToday(): Promise<number> {

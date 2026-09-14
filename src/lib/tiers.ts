@@ -16,7 +16,6 @@ export type TierLimits = {
   alertCadence: "daily" | "hourly";
   seoKeywords: number | null;
   seoRefreshDays: number;
-  seoSearchVolume: boolean;
   competitors: number | null;
   apiRequestsPerDay: number;
   /**
@@ -46,7 +45,6 @@ export const TIERS: Record<TierName, TierLimits> = {
     alertCadence: "daily",
     seoKeywords: 10,
     seoRefreshDays: 7,
-    seoSearchVolume: false,
     competitors: 3,
     apiRequestsPerDay: 1000,
     discoveryQueries: 8,
@@ -70,7 +68,6 @@ export const TIERS: Record<TierName, TierLimits> = {
     alertCadence: "hourly",
     seoKeywords: null,
     seoRefreshDays: 1,
-    seoSearchVolume: true,
     competitors: null,
     apiRequestsPerDay: 10000,
     discoveryQueries: 12,

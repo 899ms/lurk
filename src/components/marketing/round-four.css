@@ -320,12 +320,6 @@
   gap: 6px;
   min-width: 0;
 }
-.seo-row-locked {
-  align-items: center;
-  border-bottom: 0;
-  color: var(--fg-muted);
-  font-size: 12px;
-}
 .seo-art-table {
   --tile-first: var(--m-mint);
   --tile-second: var(--m-teal);

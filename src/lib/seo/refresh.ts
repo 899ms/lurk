@@ -6,7 +6,7 @@ import type { StoredPost } from "@/lib/reddit/store";
 import { loadScanProject, type ScanProject } from "@/lib/scan/project";
 import { tierForUser } from "@/lib/tier";
 import { competitorNamed } from "./competitors";
-import { fetchKeywordVolumes, fetchRankingThreads } from "./fetch";
+import { fetchRankingThreads } from "./fetch";
 import { seoSettings } from "./limits";
 import { writeOpportunities, type OpportunityRow } from "./opportunities";
 import { NO_PHRASINGS_PROGRESS } from "./read";
@@ -71,9 +71,7 @@ async function refreshPhrasing(
  * Reddit threads Google ranks, what each thread looks like now, and whether a
  * competitor is named in it. It searches the way buyers say the problem, not
  * the plan's Reddit queries, because those are Boolean expressions Google
- * cannot read. Monthly volume is bought once for the whole list and only for a
- * connected wallet, because that endpoint costs a hundred times a Reddit call.
- * Every project books its next refresh on the way out, at its tier's refresh
+ * cannot read. Every project books its next refresh on the way out, at its tier's refresh
  * interval, including one with no phrasings yet: a project that booked nothing
  * would never look again once its owner wrote them.
  */
@@ -106,11 +104,6 @@ export async function runSeoRefresh(
     const done = await refreshPhrasing(project, ctx, phrasing, maxAgeMs);
     threads += done.threads;
     costUsd += done.costUsd;
-  }
-
-  if (settings.searchVolume) {
-    await writeProgress(jobId, "Reading monthly search volume");
-    costUsd += await fetchKeywordVolumes(ctx, settings.phrasings);
   }
 
   await writeProgress(jobId, "Finished");

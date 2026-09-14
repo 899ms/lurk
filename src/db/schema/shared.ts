@@ -138,14 +138,6 @@ export const serpResults = pgTable("serp_results", {
   snippet: text("snippet"),
 });
 
-export const keywordVolumes = pgTable("keyword_volumes", {
-  id: text("id").primaryKey(),
-  keyword: text("keyword").notNull(),
-  geo: text("geo"),
-  monthlyVolume: integer("monthly_volume"),
-  fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
-});
-
 /**
  * Which posts one run returned, so a reused run can hand back exactly the rows
  * it produced instead of guessing from the shared post table.

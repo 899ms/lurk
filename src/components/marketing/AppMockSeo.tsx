@@ -44,9 +44,6 @@ export function AppMockSeo() {
             </div>
           </div>
         ))}
-        <div className="mock-volume">
-          Monthly search volume<span>Connect an AnyAPI wallet</span>
-        </div>
         <div className="mock-cost">
           <BrandImage name="AnyAPI" src="/anyapi-mark.svg" size={14} />
         </div>
