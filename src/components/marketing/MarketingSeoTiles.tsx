@@ -1,4 +1,4 @@
-import { Check, LockKeyhole, Search, X } from "lucide-react";
+import { Check, Search, X } from "lucide-react";
 import { SubredditChip } from "@/components/SubredditChip";
 import { BrandImage } from "./BrandImage";
 import { BrandWord } from "./BrandWord";
@@ -71,10 +71,6 @@ export function MarketingSeoTiles() {
                   </span>
                 </div>
               ))}
-              <div className="seo-row seo-row-locked">
-                <LockKeyhole size={14} />
-                <span>Monthly search volume with a connected wallet</span>
-              </div>
             </div>
           </div>
           <figcaption>

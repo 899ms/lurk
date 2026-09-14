@@ -6,7 +6,6 @@ export type SeoSettings = {
   /** The problem phrasings this refresh will search, already cut to the tier. */
   phrasings: string[];
   refreshDays: number;
-  searchVolume: boolean;
 };
 
 /**
@@ -18,6 +17,5 @@ export function seoSettings(limits: TierLimits | null, phrasings: string[]): Seo
   return {
     phrasings: capped(phrasings, effective.seoKeywords),
     refreshDays: effective.seoRefreshDays,
-    searchVolume: effective.seoSearchVolume,
   };
 }

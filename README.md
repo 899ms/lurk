@@ -112,7 +112,7 @@ A hosted instance has two tiers. Self-hosting is neither: it has no limits at al
 | Feed window | 30 days | 30 days |
 | Drafts | unlimited | unlimited |
 | Alerts | daily digest + 1 webhook | hourly, unlimited webhooks |
-| Reddit SEO | 10 keywords, refreshed weekly, no volume | unlimited, refreshed daily, with monthly search volume |
+| Reddit SEO | 10 keywords, refreshed weekly | unlimited, refreshed daily |
 | Competitors | 3 | unlimited |
 | Insights | full | full |
 | API and MCP | read-only, 1,000 requests a day | read-only, 10,000 requests a day |

@@ -1,12 +1,6 @@
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import {
-  keywordVolumes,
-  redditPosts,
-  seoOpportunities,
-  subreddits,
-} from "@/db/schema";
-import { normalizeQuery } from "@/lib/reddit/fetch";
+import { redditPosts, seoOpportunities, subreddits } from "@/db/schema";
 
 /**
  * What a refresh writes as its progress when the project has no problem
@@ -70,26 +64,3 @@ export async function seoFacets(projectId: string): Promise<SeoFacets> {
     subreddits: [...new Set(rows.map((row) => row.subreddit))].sort(),
   };
 }
-
-/** The most recent monthly volume held for each keyword, when one was bought. */
-export async function volumesFor(keywords: string[]): Promise<Map<string, number>> {
-  if (keywords.length === 0) {
-    return new Map();
-  }
-  const rows = await db()
-    .select({
-      keyword: keywordVolumes.keyword,
-      monthlyVolume: keywordVolumes.monthlyVolume,
-    })
-    .from(keywordVolumes)
-    .where(inArray(keywordVolumes.keyword, keywords.map(normalizeQuery)))
-    .orderBy(desc(keywordVolumes.fetchedAt));
-  const byKeyword = new Map<string, number>();
-  for (const row of rows) {
-    if (!byKeyword.has(row.keyword) && row.monthlyVolume !== null) {
-      byKeyword.set(row.keyword, row.monthlyVolume);
-    }
-  }
-  return byKeyword;
-}
-

@@ -93,8 +93,6 @@
 .mock-seo-row a { display: block; margin-bottom: 12px; font-size: 18px; }
 .mock-seo-row small { color: var(--fg-muted); font-size: 10px; }
 .competitor-flag { display: inline-flex; align-items: center; gap: 6px; margin-top: 14px; padding: 4px 8px; border: 1px solid var(--border); border-radius: var(--radius-control); font-size: 10px; }
-.mock-volume { display: flex; justify-content: space-between; padding: 20px; background: var(--m-stage); border-radius: var(--radius-control); font-size: 12px; }
-.mock-volume span { color: var(--fg-muted); }
 /* Every landscape window deliberately runs through the sky panel's bottom. */
 .marketing-hero { height: 820px; overflow: hidden; }
 .hero-product { max-width: 1120px; }
