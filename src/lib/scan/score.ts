@@ -38,6 +38,9 @@ async function triageBatch(
     projectId,
     schema: triageSchema,
     system: TRIAGE_SYSTEM,
+    itemsAsked: candidates.length,
+    itemsAnswered: (value) => value.items.length,
+    attempt: 1,
     prompt: [
       "Product:",
       product,
@@ -122,6 +125,9 @@ async function judgeBatch(
     projectId,
     schema: judgementSchema,
     system: JUDGEMENT_SYSTEM,
+    itemsAsked: batch.length,
+    itemsAnswered: (value) => value.items.length,
+    attempt: 1,
     prompt: ["Product:", product, "", "Candidates:", batch.map(describeItem).join("\n---\n")].join(
       "\n",
     ),
@@ -139,6 +145,9 @@ async function judgeBatch(
     projectId,
     schema: judgementSchema,
     system: JUDGEMENT_SYSTEM,
+    itemsAsked: retry.length,
+    itemsAnswered: (value) => value.items.length,
+    attempt: 2,
     prompt: ["Product:", product, "", "Candidates:", retry.map(describeItem).join("\n---\n")].join(
       "\n",
     ),

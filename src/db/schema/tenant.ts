@@ -369,7 +369,17 @@ export const usageLedger = pgTable(
   (t) => [index("usage_ledger_project_at_idx").on(t.projectId, t.at)],
 );
 
-/** What the house spent on the language model, so the daily cap can be read back. */
+/**
+ * Every language model call this instance made: what it cost, how long it took,
+ * who served it, and whether it answered. The daily cap reads the cost, and the
+ * scorer report reads the rest, so a question about a bad verdict is answered
+ * from a table instead of by running the scan again.
+ *
+ * The columns after `cost_usd` are null on a row written before 2026-09-13,
+ * because those calls really did record nothing else. `schema_failed` is the
+ * exception: a failed call used to write no row at all, so false is exactly
+ * right for every old one.
+ */
 export const llmUsage = pgTable(
   "llm_usage",
   {
@@ -379,9 +389,27 @@ export const llmUsage = pgTable(
     inputTokens: integer("input_tokens").notNull().default(0),
     outputTokens: integer("output_tokens").notNull().default(0),
     costUsd: numeric("cost_usd", { precision: 12, scale: 6 }).notNull().default("0"),
+    /** The model asked for, and the upstream OpenRouter routed the call to. */
+    model: text("model"),
+    provider: text("provider"),
+    /** Wall time of the whole call, the retries inside the SDK included. */
+    latencyMs: integer("latency_ms"),
+    /** How many items a batched call asked for, and how many came back. */
+    itemsAsked: integer("items_asked"),
+    itemsAnswered: integer("items_answered"),
+    finishReason: text("finish_reason"),
+    /** True when the answer could not be read as the shape that was asked for. */
+    schemaFailed: boolean("schema_failed").notNull().default(false),
+    /** 1 for the first call, 2 for the one that asks again for skipped ids. */
+    attempt: integer("attempt"),
+    /** Reasoning tokens, where the provider reports them. Billed as output. */
+    reasoningTokens: integer("reasoning_tokens"),
     at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("llm_usage_at_idx").on(t.at)],
+  (t) => [
+    index("llm_usage_at_idx").on(t.at),
+    index("llm_usage_project_purpose_at_idx").on(t.projectId, t.purpose, t.at),
+  ],
 );
 
 export const jobs = pgTable("jobs", {

@@ -1,5 +1,5 @@
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import { generateObject } from "ai";
+import { NoObjectGeneratedError, TypeValidationError, generateObject } from "ai";
 import { gte, sql } from "drizzle-orm";
 import type { z } from "zod";
 import { db } from "@/db";
@@ -141,11 +141,83 @@ export type LlmCall<T> = {
   schema: z.ZodType<T>;
   system: string;
   prompt: string;
+  /** How many items a batched call asked for. Absent when it asks for one thing. */
+  itemsAsked?: number;
+  /** How many of them the answer carried, read off the value that came back. */
+  itemsAnswered?: (value: T) => number;
+  /** 1 for the first call, 2 for the one asking again for the ids it skipped. */
+  attempt?: number;
+};
+
+/** What one call left behind, whether it answered or failed. */
+type CallRecord = {
+  inputTokens: number;
+  outputTokens: number;
+  reasoningTokens: number | null;
+  model: string;
+  provider: string | null;
+  latencyMs: number;
+  finishReason: string | null;
+  schemaFailed: boolean;
+  itemsAnswered: number | null;
 };
 
 /**
+ * The provider OpenRouter routed this call to. It is the one fact a person
+ * cannot get any other way: two calls to the same model on the same day can be
+ * served by different upstreams, and only one of them may be the slow one.
+ */
+function providerOf(metadata: unknown): string | null {
+  const openrouter = (metadata as { openrouter?: { provider?: unknown } } | undefined)?.openrouter;
+  return typeof openrouter?.provider === "string" ? openrouter.provider : null;
+}
+
+async function record(call: LlmCall<unknown>, made: CallRecord): Promise<void> {
+  await db()
+    .insert(llmUsage)
+    .values({
+      projectId: call.projectId,
+      purpose: call.purpose,
+      inputTokens: made.inputTokens,
+      outputTokens: made.outputTokens,
+      reasoningTokens: made.reasoningTokens,
+      costUsd: costOf(made.inputTokens, made.outputTokens).toFixed(6),
+      model: made.model,
+      provider: made.provider,
+      latencyMs: made.latencyMs,
+      itemsAsked: call.itemsAsked ?? null,
+      itemsAnswered: made.itemsAnswered,
+      finishReason: made.finishReason,
+      schemaFailed: made.schemaFailed,
+      attempt: call.attempt ?? null,
+    });
+}
+
+/**
+ * What a failed call is known to have spent. The SDK raises the answer it could
+ * not read along with the error, so a call that burned tokens and returned
+ * nothing usable is still recorded: an unreadable answer is the most expensive
+ * thing a scorer does and the one a person is least likely to hear about.
+ */
+function spentOnFailure(error: unknown): { input: number; output: number; reasoning: number | null } {
+  const usage = NoObjectGeneratedError.isInstance(error) ? error.usage : undefined;
+  return {
+    input: usage?.inputTokens ?? 0,
+    output: usage?.outputTokens ?? 0,
+    reasoning: usage?.outputTokenDetails?.reasoningTokens ?? null,
+  };
+}
+
+/** True when the call answered, but not in the shape it was asked for. */
+function isSchemaFailure(error: unknown): boolean {
+  return NoObjectGeneratedError.isInstance(error) || TypeValidationError.isInstance(error);
+}
+
+/**
  * One structured language model call, billed to the house and recorded in
- * llm_usage so the daily cap and the Data usage screen both read one table.
+ * llm_usage: the daily cap, the Data usage screen and the scorer report all
+ * read that one table. Every call writes a row, the failures included, so
+ * "what did this scan cost and did it answer" is a query and never a rerun.
  */
 export async function generateStructured<T>(call: LlmCall<T>): Promise<T> {
   const { OPENROUTER_API_KEY, OPENROUTER_MODEL } = config();
@@ -154,26 +226,45 @@ export async function generateStructured<T>(call: LlmCall<T>): Promise<T> {
   }
   await assertUnderCap();
   const openrouter = createOpenRouter({ apiKey: OPENROUTER_API_KEY });
-  const result = await withCallTimeout((abortSignal) =>
-    generateObject({
-      model: openrouter.chat(OPENROUTER_MODEL),
-      schema: call.schema,
-      system: call.system,
-      prompt: call.prompt,
-      providerOptions: { openrouter: { reasoning: { effort: REASONING_EFFORT } } },
-      abortSignal,
-    }),
-  );
-  const inputTokens = result.usage.inputTokens ?? 0;
-  const outputTokens = result.usage.outputTokens ?? 0;
-  await db()
-    .insert(llmUsage)
-    .values({
-      projectId: call.projectId,
-      purpose: call.purpose,
-      inputTokens,
-      outputTokens,
-      costUsd: costOf(inputTokens, outputTokens).toFixed(6),
+  const startedAt = Date.now();
+  let result;
+  try {
+    result = await withCallTimeout((abortSignal) =>
+      generateObject({
+        model: openrouter.chat(OPENROUTER_MODEL),
+        schema: call.schema,
+        system: call.system,
+        prompt: call.prompt,
+        providerOptions: { openrouter: { reasoning: { effort: REASONING_EFFORT } } },
+        abortSignal,
+      }),
+    );
+  } catch (error) {
+    const spent = spentOnFailure(error);
+    await record(call as LlmCall<unknown>, {
+      inputTokens: spent.input,
+      outputTokens: spent.output,
+      reasoningTokens: spent.reasoning,
+      model: OPENROUTER_MODEL,
+      provider: null,
+      latencyMs: Date.now() - startedAt,
+      finishReason: error instanceof Error ? error.name : null,
+      schemaFailed: isSchemaFailure(error),
+      itemsAnswered: null,
     });
-  return call.schema.parse(withoutNulCharacters(result.object));
+    throw error;
+  }
+  const value = call.schema.parse(withoutNulCharacters(result.object));
+  await record(call as LlmCall<unknown>, {
+    inputTokens: result.usage.inputTokens ?? 0,
+    outputTokens: result.usage.outputTokens ?? 0,
+    reasoningTokens: result.usage.outputTokenDetails.reasoningTokens ?? null,
+    model: result.response?.modelId ?? OPENROUTER_MODEL,
+    provider: providerOf(result.providerMetadata),
+    latencyMs: Date.now() - startedAt,
+    finishReason: result.finishReason ?? null,
+    schemaFailed: false,
+    itemsAnswered: call.itemsAnswered ? call.itemsAnswered(value) : null,
+  });
+  return value;
 }
