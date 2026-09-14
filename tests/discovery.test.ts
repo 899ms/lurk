@@ -6,7 +6,6 @@ import {
   buildDiscoveryQueries,
   expandDiscoveryQueries,
   expansionShouldStop,
-  SITE_SCOPE,
   type Destination,
 } from "@/lib/discovery/queries";
 import {
@@ -23,6 +22,7 @@ import {
   type EvidenceLike,
 } from "@/lib/discovery/rank";
 import { askedQueries } from "@/lib/discovery/refresh";
+import { googleQuery } from "@/lib/seo/fetch";
 import { TIERS } from "@/lib/tiers";
 
 const generateStructured = vi.fn();
@@ -70,20 +70,34 @@ describe("the queries discovery buys", () => {
     expect(queries).toHaveLength(8);
     expect(queries.filter((item) => item.destination === null)).toHaveLength(4);
     expect(queries.filter((item) => item.destination !== null)).toHaveLength(4);
-    expect(queries.every((item) => item.query.startsWith(SITE_SCOPE))).toBe(true);
+    expect(queries.every((item) => item.query.endsWith(" reddit"))).toBe(true);
+  });
+
+  /**
+   * A shared Google run is keyed on the query text alone, so discovery and the
+   * Reddit SEO tab asking one phrasing two ways bought it twice. They ask the
+   * one question now, and the second caller pays nothing.
+   */
+  it("asks Google the same question the Reddit SEO tab asks", () => {
+    const asked = buildDiscoveryQueries({
+      problemPhrasings: PHRASINGS,
+      destinations: [],
+      budget: 1,
+    });
+    expect(asked[0].query).toBe(googleQuery(PHRASINGS[0]));
   });
 
   it("asks the phrasing as the buyer said it, word for word", () => {
-    expect(queries[0].query).toBe(`${SITE_SCOPE} hotels that allow 18 year olds`);
-    expect(queries[1].query).toBe(`${SITE_SCOPE} under 21 hotel check in`);
-    expect(queries[2].query).toBe(`${SITE_SCOPE} hotel refused check in because of age`);
+    expect(queries[0].query).toBe(googleQuery("hotels that allow 18 year olds"));
+    expect(queries[1].query).toBe(googleQuery("under 21 hotel check in"));
+    expect(queries[2].query).toBe(googleQuery("hotel refused check in because of age"));
   });
 
   it("adds the city, and only the city, to a query about a place", () => {
     const placed = queries.filter((item) => item.destination !== null);
     expect(placed.map((item) => item.destination)).toEqual(DESTINATION_NAMES);
-    expect(placed[0].query).toBe(`${SITE_SCOPE} hotels that allow 18 year olds Las Vegas`);
-    expect(placed[1].query).toBe(`${SITE_SCOPE} under 21 hotel check in Miami`);
+    expect(placed[0].query).toBe(googleQuery("hotels that allow 18 year olds Las Vegas"));
+    expect(placed[1].query).toBe(googleQuery("under 21 hotel check in Miami"));
     expect(placed[1].query).not.toContain("Florida");
   });
 
@@ -248,10 +262,10 @@ describe("labels the model has to cite", () => {
 });
 
 /** The threads the eight queries came back with, as Google ordered them. */
-const BROAD = `${SITE_SCOPE} hotels that allow 18 year olds`;
-const BROAD_TWO = `${SITE_SCOPE} minimum hotel check in age`;
-const VEGAS = `${SITE_SCOPE} hotels that allow 18 year olds Las Vegas`;
-const MIAMI = `${SITE_SCOPE} under 21 hotel check in Miami`;
+const BROAD = googleQuery("hotels that allow 18 year olds");
+const BROAD_TWO = googleQuery("minimum hotel check in age");
+const VEGAS = googleQuery("hotels that allow 18 year olds Las Vegas");
+const MIAMI = googleQuery("under 21 hotel check in Miami");
 
 const EVIDENCE: EvidenceLike[] = [
   {
@@ -416,7 +430,7 @@ describe("what the evidence says about communities", () => {
 
 describe("what the evidence says to search for", () => {
   it("collapses the city out of a phrase so one demand is one family", () => {
-    const families = rankFamilies(EVIDENCE, DESTINATION_NAMES);
+    const families = rankFamilies(EVIDENCE, DESTINATION_NAMES, PHRASINGS);
     const top = families[0];
     expect(top.family).toBe("hotels-allow-18");
     expect(top.phrases).toContain("hotels 20 year olds");
@@ -521,7 +535,7 @@ describe("competitors", () => {
 describe("the plan the ranking publishes", () => {
   const plan = planFromRanks({
     communities: rankCommunities(EVIDENCE, DESTINATION_NAMES),
-    families: rankFamilies(EVIDENCE, DESTINATION_NAMES),
+    families: rankFamilies(EVIDENCE, DESTINATION_NAMES, PHRASINGS),
     competitors: [{ name: "hotelages.com", role: "direct_substitute", evidence: 2 }],
     scopedCommunities: ["vegas"],
     productNumbers: PRODUCT_NUMBERS,
@@ -568,11 +582,13 @@ describe("the plan the ranking publishes", () => {
           family: "a",
           weighted: 4,
           phrases: ["hotels that let 18 year olds check in", "hotel 18 check in"],
+          asked: null,
         },
         {
           family: "b",
           weighted: 2,
           phrases: ["hotel 18 check in", "hotels that let 18 year olds check in"],
+          asked: null,
         },
       ],
       competitors: [],
@@ -583,6 +599,87 @@ describe("the plan the ranking publishes", () => {
     expect(twice.keywords).toEqual([
       { keyword: '(hotel OR hotels) AND (18 OR "check in")', evidence: 4 },
     ]);
+  });
+
+  /**
+   * A product whose buyers ask for the thing by its name has no age, no limit
+   * and no refusal to compile, so every family returned an empty query and the
+   * project got no searches at all. Measured 2026-09-13 against getanyapi.com:
+   * the five phrasings the profile produced compiled to nothing, and the live
+   * project on lurk.so had 0 of 25 searches. These titles are the ones Google
+   * returned that day for "reddit scraper api".
+   */
+  it("falls back to the phrasing itself when a family carries no constraint", () => {
+    const nouns = planFromRanks({
+      communities: [],
+      families: [
+        {
+          family: "reddit-scraper-api",
+          weighted: 3,
+          phrases: [
+            "How to scrape Reddit now (Closed API)?",
+            "Open-source Reddit scraper",
+            "Best Methods for Scraping Reddit Data?",
+          ],
+          asked: "reddit scraper api",
+        },
+      ],
+      competitors: [],
+      scopedCommunities: [],
+      productNumbers: new Set<string>(),
+      limits: TIERS.free,
+    });
+    expect(nouns.keywords).toEqual([{ keyword: "reddit scraper api", evidence: 3 }]);
+  });
+
+  /**
+   * Two phrasings share a family key when their first three meaning words
+   * match, so the key alone cannot say which of them Google answered. Reading
+   * the fallback off the key picked whichever phrasing the product listed last
+   * and threw the supported one away. The phrasing is taken from the query
+   * behind the evidence instead, so this goes through the real ranking.
+   */
+  it("falls back to the phrasing the evidence came from, not a colliding one", () => {
+    const phrasings = ["reddit scraper api for comments", "reddit scraper api for images"];
+    const collided: EvidenceLike[] = [
+      {
+        postId: "c1",
+        subreddit: "webscraping",
+        query: googleQuery("reddit scraper api for comments"),
+        family: "reddit-scraper-api",
+        destination: null,
+        position: 1,
+        title: "Open source Reddit comment scraper",
+        snippet: "I need every comment on a thread.",
+        relevance: "relevant",
+      },
+    ];
+    const colliding = planFromRanks({
+      communities: [],
+      families: rankFamilies(collided, [], phrasings),
+      competitors: [],
+      scopedCommunities: [],
+      productNumbers: new Set<string>(),
+      limits: TIERS.free,
+    });
+    expect(colliding.keywords).toEqual([
+      { keyword: "reddit scraper api for comments", evidence: 1 },
+    ]);
+  });
+
+  /** A family nothing asked for still has no search to fall back to. */
+  it("writes no search for a family whose phrasing it never saw", () => {
+    const orphan = planFromRanks({
+      communities: [],
+      families: [
+        { family: "unasked-family", weighted: 2, phrases: ["open source reddit scraper"], asked: null },
+      ],
+      competitors: [],
+      scopedCommunities: [],
+      productNumbers: new Set<string>(),
+      limits: TIERS.free,
+    });
+    expect(orphan.keywords).toEqual([]);
   });
 
   it("searches the compiled families and the discovered city community", () => {

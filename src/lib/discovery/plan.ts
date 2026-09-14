@@ -79,9 +79,20 @@ export function planFromRanks(input: PlanInput): DiscoveryPlan {
     };
   });
 
+  // A family whose evidence carries no constraint compiles to nothing, because
+  // a bare subject like "hotel" matches most of Reddit. Some demands have no
+  // constraint to carry: a person shopping for a Reddit scraper asks for the
+  // thing by its name. Measured 2026-09-13 on getanyapi.com, every family
+  // compiled empty and the project got no searches at all. Such a family falls
+  // back to the phrasing whose own query earned it its evidence, which is why
+  // the ranking carries that phrasing rather than this reading it off the key.
+  // Measured the same day, reddit.search on "reddit scraper api" returns people
+  // asking for one, where "reddit AND scraper AND api" returns people selling
+  // one: 17 of 25 asks against 4, because requiring every word favours the
+  // person whose own tool is named by all of them.
   const families = input.families.filter((family) => family.phrases.length > 0);
   const broad = families.map((family) => ({
-    keyword: compileBooleanQuery(family.phrases, input.productNumbers),
+    keyword: compileBooleanQuery(family.phrases, input.productNumbers) || (family.asked ?? ""),
     evidence: Math.round(family.weighted),
   }));
   const top = broad.find((item) => item.keyword.length > 0);

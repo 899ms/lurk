@@ -115,13 +115,15 @@ export type PublishInput = {
   competitors: CompetitorRank[];
   /** Everything this product says about itself, which is where its numbers come from. */
   productTexts: string[];
+  /** The product's own phrasings, which a family with no constraint searches for. */
+  phrasings: string[];
 };
 
 /** Ranks everything this project has ever seen and publishes the new plan. */
 export async function publishFromEvidence(input: PublishInput) {
   const names = input.destinations.map((place) => place.name);
   const communities = rankCommunities(input.rows, names);
-  const families = rankFamilies(input.rows, names);
+  const families = rankFamilies(input.rows, names, input.phrasings);
   const scoped = rankSide(input.rows.filter((row) => isDestinationQuery(row.query, names)))
     .filter((item) => item.weighted > 0)
     .slice(0, discoveryBudget(input.limits).scoped)
@@ -208,6 +210,7 @@ export async function runDiscovery(input: DiscoveryInput): Promise<DiscoveryOutc
     limits: input.limits,
     competitors: mergeCompetitors([], competitorsFrom(labels)),
     productTexts: [brief, ...input.problemPhrasings],
+    phrasings: input.problemPhrasings,
   });
   return {
     queries: used.length,
