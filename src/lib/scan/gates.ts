@@ -5,25 +5,15 @@ import type { Assessment, Decision, Judgement, ReasonCode, ScorableItem } from "
  * The qualification gates. They are non-compensatory and they live here, in
  * code, because a model asked for one number will always let a strong intent
  * pay for a missing fit. A lead qualifies only when the person is a buyer with
- * a need still open, the product plausibly does the job, they are looking for
- * one, and nothing they said is a hard requirement the product cannot meet.
+ * a need still open, the product plausibly does the job, and they are looking
+ * for one.
  */
-
-const REJECTING: ReasonCode[] = [
-  "seller_only",
-  "helper_only",
-  "resolved",
-  "no_active_need",
-  "hard_requirement_mismatch",
-  "wrong_job",
-];
 
 /**
  * The first gate this assessment fails, as the reason code that names it, or
- * null when it passes every gate. A settled reading rejects before an unknown
- * one holds: a person with no active need, or a job the product plainly does
- * not do, is a rejection whoever they turned out to be, so not knowing who
- * they are never keeps them on the review list.
+ * null when it passes every gate. The code says which gate; whether that gate
+ * rejects or holds is `settledDisqualifier` below, so the two questions cannot
+ * drift apart.
  */
 export function gateFailure(item: Assessment): ReasonCode | null {
   if (item.relationship === "seller") {
@@ -38,8 +28,11 @@ export function gateFailure(item: Assessment): ReasonCode | null {
   if (item.needState === "no_active_need" || item.relationship === "discussion") {
     return "no_active_need";
   }
-  if (item.fit !== null && item.fit < 2) {
+  if (item.fit === 0) {
     return "wrong_job";
+  }
+  if (item.fit === 1) {
+    return "wrong_audience";
   }
   if (item.relationship !== "buyer" || item.needState === "unknown") {
     return "insufficient_evidence";
@@ -53,14 +46,7 @@ export function gateFailure(item: Assessment): ReasonCode | null {
   if (item.intent < 2) {
     return "no_active_need";
   }
-  if (item.requirements.some((need) => need.importance === "hard" && need.satisfaction === "unmet")) {
-    return "hard_requirement_mismatch";
-  }
   return null;
-}
-
-function withCode(codes: ReasonCode[], code: ReasonCode): ReasonCode[] {
-  return codes.includes(code) ? codes : [...codes, code];
 }
 
 /**
@@ -75,17 +61,41 @@ function nothingAssessed(item: Assessment): boolean {
 }
 
 /**
- * The decision the scan acts on. The model may reject or send to review on its
- * own reading; only the gates may let something qualify.
+ * The rejection invariant: a reject rests on one settled disqualifier, and on
+ * nothing else. Those are a person who sells or is helping somebody else, a
+ * need that is met or was never there, a job the product plainly does not do
+ * (fit 0), and an item nothing at all could be read into.
+ *
+ * Everything else that is not a qualify is a review, which is a pile a person
+ * can settle in a glance. That includes the model rejecting on its own reading
+ * with none of these behind it, and fit 1: category overlap with no supported
+ * solution is a thin reading of the product, not a fact about the person.
  */
-export function decide(item: Assessment): { decision: Decision; reasonCodes: ReasonCode[] } {
+function settledDisqualifier(item: Assessment): boolean {
+  return (
+    item.relationship === "seller" ||
+    item.relationship === "helper" ||
+    item.needState === "resolved" ||
+    item.needState === "no_active_need" ||
+    item.fit === 0 ||
+    nothingAssessed(item)
+  );
+}
+
+/**
+ * The decision the scan acts on. The model may send an item to review on its
+ * own reading; only the gates may let something qualify, and only a settled
+ * disqualifier may reject.
+ */
+export function decide(item: Assessment): { decision: Decision; reasonCode: ReasonCode } {
   const failure = gateFailure(item);
   if (!failure) {
-    return { decision: item.decision, reasonCodes: item.reasonCodes };
+    return {
+      decision: item.decision === "reject" ? "review" : item.decision,
+      reasonCode: item.reasonCode,
+    };
   }
-  const decision: Decision =
-    REJECTING.includes(failure) || nothingAssessed(item) ? "reject" : "review";
-  return { decision, reasonCodes: withCode(item.reasonCodes, failure) };
+  return { decision: settledDisqualifier(item) ? "reject" : "review", reasonCode: failure };
 }
 
 /** What a lead is for. A `context` lead is a thread worth a comment, not an ask. */
@@ -100,8 +110,8 @@ const CONTEXT_FAILURES: ReasonCode[] = ["seller_only", "helper_only", "no_active
  * someone helping another person, and a thread where nobody asks are not
  * buyers, but when the product plainly does the job they are talking about
  * (the same fit floor `wrong_job` uses) a comment there is worth writing. A
- * settled need, a job the product does not do, and a requirement it cannot
- * meet stay rejections: there is nothing to say in those threads.
+ * settled need and a job the product does not do stay rejections: there is
+ * nothing to say in those threads.
  */
 export function routeLead(item: Assessment): LeadKind | null {
   const failure = gateFailure(item);
@@ -114,12 +124,13 @@ export function routeLead(item: Assessment): LeadKind | null {
   return null;
 }
 
-/** Sends an item the evidence does not support to review, never to the feed. */
+/**
+ * Sends an item the evidence does not support to review, never to the feed. A
+ * settled rejection is left alone: it does not rest on the quote, and its own
+ * code says more than this one would.
+ */
 export function downgradeToReview(item: Judgement, code: ReasonCode): Judgement {
-  if (item.decision === "reject") {
-    return { ...item, reasonCodes: withCode(item.reasonCodes, code) };
-  }
-  return { ...item, decision: "review", reasonCodes: withCode(item.reasonCodes, code) };
+  return item.decision === "reject" ? item : { ...item, decision: "review", reasonCode: code };
 }
 
 /**
@@ -129,11 +140,11 @@ export function downgradeToReview(item: Judgement, code: ReasonCode): Judgement 
  */
 export function judge(item: Assessment, source: ScorableItem): Judgement {
   const engagement = engagementScore(source.ageHours, source.numComments);
-  const { decision, reasonCodes } = decide(item);
+  const { decision, reasonCode } = decide(item);
   return {
     ...item,
     decision,
-    reasonCodes,
+    reasonCode,
     engagement,
     score: foldScore(item.fit, item.intent, engagement),
     matchedPhrase: item.needEvidence?.quote ?? "",

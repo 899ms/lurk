@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { leads, redditPosts } from "@/db/schema";
 import type { StoredPost } from "@/lib/reddit/store";
@@ -117,6 +117,40 @@ export async function resolveLeads(projectId: string, postIds: string[]): Promis
         inArray(leads.postId, postIds),
         sql`${leads.commentId} is null`,
         eq(leads.status, "new"),
+      ),
+    )
+    .returning({ id: leads.id });
+  return done.length;
+}
+
+/** One candidate a re-judgement no longer puts in the feed. */
+export type LeadKeyRow = { postId: string; commentId: string | null };
+
+/**
+ * Takes back the leads whose latest verdict no longer routes anywhere. Only a
+ * lead still sitting at `new` is withdrawn: once a person has hidden it, called
+ * it a miss or marked it resolved, the row is their record and not the
+ * scorer's. A withdrawn post appears in the held pile again, because a review
+ * item is hidden only while a lead row for it exists.
+ */
+export async function demoteLeads(projectId: string, keys: LeadKeyRow[]): Promise<number> {
+  if (keys.length === 0) {
+    return 0;
+  }
+  const done = await db()
+    .delete(leads)
+    .where(
+      and(
+        eq(leads.projectId, projectId),
+        eq(leads.status, "new"),
+        or(
+          ...keys.map((key) =>
+            and(
+              eq(leads.postId, key.postId),
+              key.commentId === null ? isNull(leads.commentId) : eq(leads.commentId, key.commentId),
+            ),
+          ),
+        ),
       ),
     )
     .returning({ id: leads.id });

@@ -19,7 +19,14 @@ import {
   type EvaluationRecord,
   type StoredJudgement,
 } from "./evaluations";
-import { leadKey, openPostLeads, resolveLeads, writeLeads, type LeadRow } from "./leads";
+import {
+  demoteLeads,
+  leadKey,
+  openPostLeads,
+  resolveLeads,
+  writeLeads,
+  type LeadRow,
+} from "./leads";
 import { loadScanProject, type ScanProject } from "./project";
 import { retrieve } from "./retrieve";
 import { creditSources, markCovered, type CandidateSource } from "./sources";
@@ -271,6 +278,19 @@ export async function runScan(projectId: string, jobId: string): Promise<ScanOut
     toLead(project, item.judgement, item.judgement.id, null, item.kind),
   );
   await writeLeads(postLeads);
+  /**
+   * A post this run judged again and no longer routes anywhere loses its lead.
+   * The feed is what the current verdict says, so a lead the profile edit or
+   * the thread turned into a review belongs in the held pile, not in front of
+   * a person as a buyer we no longer believe in.
+   */
+  const kept = new Set(postLeads.map((lead) => lead.postId));
+  await demoteLeads(
+    projectId,
+    judgements
+      .filter((judgement) => !kept.has(judgement.id))
+      .map((judgement) => ({ postId: judgement.id, commentId: null })),
+  );
 
   await writeProgress(jobId, "Reading comment threads");
   const threadBudget = limits?.commentThreadsPerScan ?? null;

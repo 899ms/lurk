@@ -50,11 +50,8 @@ function assessment(id: string, patch: Assessment = {}): Assessment {
     fit: 4,
     intent: 3,
     stage: "solution_seeking",
-    requirements: [],
-    answerCoverage: "none",
-    unansweredAngle: null,
     decision: "qualify",
-    reasonCodes: ["supported_open_need"],
+    reasonCode: "supported_open_need",
     needEvidence: { quote: "needs conditional logic" },
     reason: "Wants a form that branches.",
     ...patch,
@@ -354,7 +351,13 @@ describe.skipIf(!hasDatabase)("runScan against a database", () => {
     expect(held[0]?.judgedAt).toBeInstanceOf(Date);
   });
 
-  it("never lists a thread as held once it is already a lead", async () => {
+  /**
+   * The feed says what the current verdict says. Until 2026-09-13 a lead the
+   * scorer had stopped believing in stayed in the feed and was kept out of the
+   * held pile, so a person could be sold a buyer that no scorer would qualify
+   * today. A lead the person has already acted on is still theirs.
+   */
+  it("takes back a lead the next verdict no longer qualifies", async () => {
     const row = await project();
     const [only] = await posts(1);
     fetchSearch.mockResolvedValue({ value: { posts: [only], nextCursor: null }, reused: true, costUsd: 0 });
@@ -370,8 +373,36 @@ describe.skipIf(!hasDatabase)("runScan against a database", () => {
     model([only.id], (id) => assessment(id, { decision: "review", fit: 2 }));
     await runScan(row.id, randomUUID());
 
-    expect(await listReviewItems(row.id, 30)).toHaveLength(0);
-    expect(await listLeads(row.id, { status: "new", days: 30 })).toHaveLength(1);
+    expect(await listLeads(row.id, { status: "new", days: 30 })).toHaveLength(0);
+    expect(await listReviewItems(row.id, 30)).toHaveLength(1);
+  });
+
+  it("leaves a lead the person already acted on where they put it", async () => {
+    const row = await project();
+    const [only] = await posts(1);
+    fetchSearch.mockResolvedValue({ value: { posts: [only], nextCursor: null }, reused: true, costUsd: 0 });
+    fetchPost.mockResolvedValue({ value: [only], reused: true, costUsd: 0 });
+    model([only.id], (id) => assessment(id, { decision: "qualify", fit: 3, intent: 3 }));
+    await runScan(row.id, randomUUID());
+    await db()
+      .update(schema.leads)
+      .set({ status: "not_fit", notFitReason: "wrong_market" })
+      .where(eq(schema.leads.projectId, row.id));
+
+    await db()
+      .update(schema.projects)
+      .set({ profileVersion: 2, solution: "A form builder that also analyses answers." })
+      .where(eq(schema.projects.id, row.id));
+    model([only.id], (id) => assessment(id, { decision: "review", fit: 2 }));
+    await runScan(row.id, randomUUID());
+
+    const kept = await db()
+      .select()
+      .from(schema.leads)
+      .where(eq(schema.leads.projectId, row.id));
+    expect(kept).toHaveLength(1);
+    expect(kept[0].status).toBe("not_fit");
+    expect(kept[0].notFitReason).toBe("wrong_market");
   });
 
   it("judges a candidate again once the product profile has changed", async () => {
@@ -641,7 +672,7 @@ describe.skipIf(!hasDatabase)("runScan against a database", () => {
     }));
     model([held.id, other.id], (id) =>
       id === held.id
-        ? assessment(id, { decision: "review", fit: 2, reasonCodes: ["insufficient_evidence"] })
+        ? assessment(id, { decision: "review", fit: 2, reasonCode: "insufficient_evidence" })
         : assessment(id, { decision: "reject", fit: 0 }),
     );
 
@@ -673,7 +704,7 @@ describe.skipIf(!hasDatabase)("runScan against a database", () => {
         ? assessment(id, {
             needState: "resolved",
             decision: "reject",
-            reasonCodes: ["resolved"],
+            reasonCode: "resolved",
             needEvidence: { quote: "We bought Formcraft, this is solved." },
           })
         : assessment(id),

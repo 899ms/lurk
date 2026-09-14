@@ -49,13 +49,20 @@ export type ReasonCode = (typeof REASON_CODES)[number];
 
 const evidenceSchema = z.object({ quote: z.string() });
 
-export const requirementSchema = z.object({
-  requirement: z.string(),
-  importance: z.enum(["hard", "soft"]),
-  satisfaction: z.enum(["met", "unmet", "unknown"]),
-  targetEvidence: evidenceSchema,
-});
-
+/**
+ * What the judgement call returns for one candidate. Nine fields beside the
+ * id, where there were twelve, because the
+ * measured slim prompt (.context/probe-prompt.ts, 100 judged posts, two Opus
+ * labellers on the contested ones) agreed with the long one on every settled
+ * post at a quarter less cost and half the wall time. The three fields it
+ * dropped - a requirement list, an answer-coverage grade and an unanswered
+ * angle - were the most expensive part of the answer and nothing on any screen
+ * read them.
+ *
+ * `reasonCode` is one code, not a list. The model gives its own reading a name
+ * and the gates in gates.ts overwrite it with the gate the item failed, so a
+ * second code was never a second fact.
+ */
 export const assessmentSchema = z.object({
   id: z.string(),
   relationship: z.enum(["buyer", "seller", "helper", "discussion", "unknown"]),
@@ -63,11 +70,8 @@ export const assessmentSchema = z.object({
   fit: z.number().int().min(0).max(4).nullable(),
   intent: z.number().int().min(0).max(4).nullable(),
   stage: z.enum(["none", "problem_aware", "solution_seeking", "comparing", "purchase_ready"]),
-  requirements: z.array(requirementSchema),
-  answerCoverage: z.enum(["none", "partial", "adequate", "unknown"]),
-  unansweredAngle: z.string().nullable(),
   decision: z.enum(["qualify", "review", "reject"]),
-  reasonCodes: z.array(z.enum(REASON_CODES)),
+  reasonCode: z.enum(REASON_CODES),
   needEvidence: evidenceSchema.nullable(),
   reason: z.string(),
 });
@@ -76,8 +80,6 @@ export const judgementSchema = z.object({ items: z.array(assessmentSchema) });
 
 /** One item as the model judged it, before any code gate is applied. */
 export type Assessment = z.infer<typeof assessmentSchema>;
-
-export type Requirement = z.infer<typeof requirementSchema>;
 
 export type Decision = Assessment["decision"];
 

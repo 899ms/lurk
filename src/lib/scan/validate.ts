@@ -1,4 +1,4 @@
-import { describeItem, describeItemUncut } from "./evidence";
+import { ownTexts } from "./evidence";
 import { downgradeToReview } from "./gates";
 import type { Judgement, ScorableItem } from "./judgement";
 
@@ -62,26 +62,17 @@ export function isVerbatim(quote: string, supplied: string[]): boolean {
 }
 
 /**
- * A judgement whose need quote is in neither the excerpt the model was shown
- * nor the item's own untruncated text goes to review, not to the feed. So does
- * a qualified lead with no quote of the person's own words at all: the feed
- * card is built out of that quote.
- *
- * A requirement the model mis-quoted is dropped rather than holding the lead,
- * unless it is an unmet hard requirement: that one rejects on the gates, and a
- * shaky quote is not a reason to let it through. A mistyped apostrophe in a
- * soft requirement once held a buyer with a verbatim need quote and fit 3.
+ * A judgement whose need quote is not in the target person's own words goes to
+ * review, not to the feed. So does a qualified lead with no quote at all: the
+ * feed card is built out of that quote. The parent post a comment replies to is
+ * deliberately not searched, so a commenter who quoted the person they are
+ * answering is held rather than sold as a buyer.
  */
 export function withCheckedEvidence(item: Judgement, source: ScorableItem): Judgement {
-  const supplied = [describeItem(source), describeItemUncut(source)];
+  const own = ownTexts(source);
   const unquoted = item.decision === "qualify" && !item.needEvidence;
-  if (unquoted || (item.needEvidence && !isVerbatim(item.needEvidence.quote, supplied))) {
+  if (unquoted || (item.needEvidence && !isVerbatim(item.needEvidence.quote, own))) {
     return downgradeToReview(item, "insufficient_evidence");
   }
-  const requirements = item.requirements.filter(
-    (need) =>
-      isVerbatim(need.targetEvidence.quote, supplied) ||
-      (need.importance === "hard" && need.satisfaction === "unmet"),
-  );
-  return requirements.length === item.requirements.length ? item : { ...item, requirements };
+  return item;
 }
