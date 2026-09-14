@@ -103,8 +103,11 @@ Return the results in the order you would spend the reading budget: best first.`
  * posts the prompt probe used (.context/probe-prompt.ts, two independent Opus
  * labellers on the 16 posts the models disagreed about), it returns the same
  * qualify-or-not verdict on all 84 settled posts and 11 of the 15 contested
- * ones the labellers agreed about, for $0.0123 and 47s per 100 posts against
- * the long prompt's measured $0.013 and 55s at the same reasoning effort.
+ * ones the labellers agreed about, for $0.0122 to $0.0123 per 100 posts over
+ * two runs, against the long prompt's measured $0.013 at the same reasoning
+ * effort. Wall time was 47s and 76s on those two runs against a measured 55s,
+ * which is a spread rather than a saving: the same 100 posts vary that much
+ * between two runs of one prompt.
  *
  * Almost all of that is the schema rather than the wording: output tokens are
  * twice the price of input ones and this answer is nine fields instead of
