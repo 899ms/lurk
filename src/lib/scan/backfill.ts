@@ -39,6 +39,8 @@ export type BackfillOutcome = {
   judged: number;
   /** Leads written, of either kind. */
   leads: number;
+  /** Walks a failed page ended before Reddit ran out of pages. */
+  cutShort: number;
 };
 
 /** One query, as it is asked and what plan rows it credits. */
@@ -52,6 +54,12 @@ type Query = { text: string; rows: PlanRow[] };
  * 0, then six full pages), so treating the first of them as the end truncated
  * `(hotel OR hotels) AND "under 21"` to 16 posts where the listing holds 150.
  * There is no page cap: a year of one phrasing is what the sweep is for.
+ *
+ * A page that fails ends this walk and nothing else. Measured 2026-09-14 on
+ * lurk.so: 13 of 380 paged searches in two days came back "all providers
+ * failed", a transient upstream error, and each one threw away a whole sweep
+ * of dozens of walks and made its person wait a scan interval for the retry.
+ * The pages before it are kept; the true answer is whether it was cut short.
  */
 async function walk(
   ctx: FetchContext,
@@ -59,14 +67,19 @@ async function walk(
   sort: (typeof SORTS)[number],
   found: Map<string, StoredPost>,
   sources: Map<string, CandidateSource[]>,
-): Promise<void> {
+): Promise<{ cutShort: boolean }> {
   let cursor: string | undefined;
   for (;;) {
-    const result = await fetchSearch(ctx, query.text, {
-      timeframe: "year",
-      sort,
-      ...(cursor ? { cursor } : {}),
-    });
+    let result: Awaited<ReturnType<typeof fetchSearch>>;
+    try {
+      result = await fetchSearch(ctx, query.text, {
+        timeframe: "year",
+        sort,
+        ...(cursor ? { cursor } : {}),
+      });
+    } catch {
+      return { cutShort: true };
+    }
     for (const post of result.value.posts) {
       found.set(post.id, post);
       const held = sources.get(post.id) ?? [];
@@ -75,7 +88,7 @@ async function walk(
     }
     const next = result.value.nextCursor ?? undefined;
     if (!next || next === cursor) {
-      return;
+      return { cutShort: false };
     }
     cursor = next;
   }
@@ -139,6 +152,7 @@ export async function runBackfill(projectId: string, jobId?: string): Promise<Ba
   // first sweep makes its user wait an hour for a feed.
   const plan = queries.flatMap((query) => SORTS.map((sort) => ({ query, sort })));
   let walks = 0;
+  let cutShort = 0;
   const next = async (): Promise<void> => {
     for (;;) {
       const item = plan[walks];
@@ -147,7 +161,10 @@ export async function runBackfill(projectId: string, jobId?: string): Promise<Ba
       }
       walks += 1;
       await progress(jobId, `Searching a year of "${item.query.text}"`);
-      await walk(ctx, item.query, item.sort, found, sourcesByPost);
+      const outcome = await walk(ctx, item.query, item.sort, found, sourcesByPost);
+      if (outcome.cutShort) {
+        cutShort += 1;
+      }
     }
   };
   await Promise.all(
@@ -231,6 +248,11 @@ export async function runBackfill(projectId: string, jobId?: string): Promise<Ba
     }
   }
 
-  await progress(jobId, "Finished");
-  return { walks, found: found.size, judged: judgements.length, leads: leads.length };
+  await progress(
+    jobId,
+    cutShort === 0
+      ? "Finished"
+      : `Finished; ${cutShort} of ${walks} searches stopped early on a Reddit error`,
+  );
+  return { walks, found: found.size, judged: judgements.length, leads: leads.length, cutShort };
 }
