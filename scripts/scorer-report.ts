@@ -60,11 +60,11 @@ function print(report: ScorerReport): void {
 
   console.log("\nMODEL CALLS");
   console.log(
-    `  ${pad("purpose", 10)}${pad("model", 34)}${pad("provider", 14)}${pad("calls", 7)}${pad("p50", 8)}${pad("p95", 8)}${pad("cost", 10)}${pad("per lead", 10)}${pad("dropped", 9)}${pad("schema", 8)}retries`,
+    `  ${pad("purpose", 18)}${pad("model", 34)}${pad("provider", 14)}${pad("calls", 7)}${pad("p50", 8)}${pad("p95", 8)}${pad("cost", 10)}${pad("per lead", 10)}${pad("dropped", 9)}${pad("schema", 8)}retries`,
   );
   for (const row of report.calls) {
     console.log(
-      `  ${pad(row.purpose, 10)}${pad(row.model ?? "-", 34)}${pad(row.provider ?? "-", 14)}${pad(row.calls, 7)}${pad(ms(row.p50Ms), 8)}${pad(ms(row.p95Ms), 8)}${pad(money(row.costUsd), 10)}${pad(row.costPerQualifiedLeadUsd === null ? "-" : money(row.costPerQualifiedLeadUsd), 10)}${pad(row.itemsDropped, 9)}${pad(row.schemaFailures, 8)}${row.retries}`,
+      `  ${pad(row.purpose, 18)}${pad(row.model ?? "-", 34)}${pad(row.provider ?? "-", 14)}${pad(row.calls, 7)}${pad(ms(row.p50Ms), 8)}${pad(ms(row.p95Ms), 8)}${pad(money(row.costUsd), 10)}${pad(row.costPerQualifiedLeadUsd === null ? "-" : money(row.costPerQualifiedLeadUsd), 10)}${pad(row.itemsDropped, 9)}${pad(row.schemaFailures, 8)}${row.retries}`,
     );
   }
   if (report.calls.length === 0) {
