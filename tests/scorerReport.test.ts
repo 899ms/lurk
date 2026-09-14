@@ -127,6 +127,21 @@ describe.skipIf(!hasDatabase)("the scorer report", () => {
     expect(report.qualifiedLeads).toBe(1);
   });
 
+  it("shows a person with no project nothing, not the whole instance", async () => {
+    const row = await project();
+    const first = await post();
+    await verdict(row.id, first.id, { decision: "qualify", scorerVersion: "new" });
+    await lead(row.id, first.id, {});
+
+    const report = await scorerReport({ projectIds: [], days: 7 });
+
+    expect(report.versions).toEqual([]);
+    expect(report.qualifiedLeads).toBe(0);
+    expect(report.calls).toEqual([]);
+    expect(report.jobs).toEqual([]);
+    expect((await scorerReport({ projectIds: null, days: 7 })).qualifiedLeads).toBeGreaterThanOrEqual(1);
+  });
+
   it("reads a verdict older than the window as outside it", async () => {
     const row = await project();
     const old = await post();

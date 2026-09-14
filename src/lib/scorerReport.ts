@@ -16,8 +16,12 @@ import { jobs, leadEvaluations, leads, llmUsage } from "@/db/schema";
 const SCORING_JOBS = ["scan", "backfill", "rescore"];
 
 export type ReportScope = {
-  /** The projects to read, or every project when the list is empty. */
-  projectIds: string[];
+  /**
+   * The projects to read. Null reads every project on the instance, which
+   * only the command line asks for; an empty list is a person with no
+   * project yet, and they see nothing, not everybody else's scans.
+   */
+  projectIds: string[] | null;
   /** How far back to read, in days. */
   days: number;
 };
@@ -83,8 +87,11 @@ function since(days: number): Date {
 }
 
 /** The project filter, or nothing at all when the report is house-wide. */
-function onlyProjects(column: Parameters<typeof inArray>[0], projectIds: string[]) {
-  return projectIds.length === 0 ? undefined : inArray(column, projectIds);
+function onlyProjects(column: Parameters<typeof inArray>[0], projectIds: string[] | null) {
+  if (projectIds === null) {
+    return undefined;
+  }
+  return projectIds.length === 0 ? sql`false` : inArray(column, projectIds);
 }
 
 /**
