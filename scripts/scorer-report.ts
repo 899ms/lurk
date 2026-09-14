@@ -33,7 +33,7 @@ function ms(value: number | null): string {
 }
 
 function print(report: ScorerReport): void {
-  const where = report.scope.projectIds.length === 0 ? "every project" : report.scope.projectIds.join(", ");
+  const where = report.scope.projectIds === null ? "every project" : report.scope.projectIds.join(", ");
   console.log(`Scorer report for ${where}, since ${report.since.toISOString()}\n`);
 
   console.log("VERDICTS BY SCORER VERSION");
@@ -87,7 +87,7 @@ async function main() {
   if (!Number.isFinite(days) || days <= 0) {
     throw new Error("--days takes a positive number of days");
   }
-  print(await scorerReport({ projectIds: project ? [project] : [], days }));
+  print(await scorerReport({ projectIds: project ? [project] : null, days }));
   process.exit(0);
 }
 
