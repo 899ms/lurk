@@ -1,4 +1,4 @@
-import { Bell, KeyRound } from "lucide-react";
+import { Bell, Gauge, KeyRound } from "lucide-react";
 import { SettingsLinkCard } from "@/components/SettingsLinkCard";
 import { WalletPanel } from "@/components/WalletPanel";
 import { requireLocalUser } from "@/lib/auth";
@@ -18,6 +18,12 @@ export default async function SettingsPage() {
         icon={Bell}
         title="Alerts"
         sentence="Where new leads land: a daily email digest, Slack, Discord or your own webhook."
+      />
+      <SettingsLinkCard
+        href="/app/settings/scoring"
+        icon={Gauge}
+        title="Scoring"
+        sentence="What the scorer decided, what you did with it, and what each model call cost."
       />
       <SettingsLinkCard
         href="/app/settings/api"

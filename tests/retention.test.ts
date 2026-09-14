@@ -45,7 +45,7 @@ describe.skipIf(!process.env.DATABASE_URL)("deleting expired posts", () => {
       .insert(schema.seoOpportunities)
       .values({ projectId: project.id, keyword: "hotels that take under 21", postId: ranked.id });
 
-    return { db, schema, deleteExpiredPosts, inArray, led, ranked, loose };
+    return { db, schema, deleteExpiredPosts, inArray, project, led, ranked, loose };
   }
 
   it("keeps a post a lead or an SEO row still points at, and drops the rest", async () => {
@@ -58,5 +58,26 @@ describe.skipIf(!process.env.DATABASE_URL)("deleting expired posts", () => {
       .from(schema.redditPosts)
       .where(inArray(schema.redditPosts.id, [led.id, ranked.id, loose.id]));
     expect(left.map((row) => row.id).sort()).toEqual([led.id, ranked.id].sort());
+  });
+
+  /**
+   * The scorer report is read months after the calls it reports on, so it only
+   * works if retention cannot take its rows away. llm_usage points at a project
+   * and never at a post, so deleting an expired post cannot cascade into it;
+   * this is that fact, stated as a test rather than as a claim.
+   */
+  it("never takes away what a model call cost, however old its post is", async () => {
+    const { db, schema, deleteExpiredPosts, inArray, project } = await fixture();
+    await db()
+      .insert(schema.llmUsage)
+      .values({ projectId: project.id, purpose: "score", inputTokens: 10, outputTokens: 5 });
+
+    await deleteExpiredPosts();
+
+    const kept = await db()
+      .select({ id: schema.llmUsage.id })
+      .from(schema.llmUsage)
+      .where(inArray(schema.llmUsage.projectId, [project.id]));
+    expect(kept).toHaveLength(1);
   });
 });
