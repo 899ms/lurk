@@ -66,11 +66,38 @@ describe("the queries discovery buys", () => {
     budget: TIERS.free.discoveryQueries,
   });
 
-  it("splits the budget between the problem and the places the page names", () => {
+  it("asks the problem with no place in it, and the places the page names", () => {
     expect(queries).toHaveLength(8);
     expect(queries.filter((item) => item.destination === null)).toHaveLength(4);
     expect(queries.filter((item) => item.destination !== null)).toHaveLength(4);
     expect(queries.every((item) => item.query.endsWith(" reddit"))).toBe(true);
+  });
+
+  /**
+   * A phrasing that is never asked can never earn a search. Under a flat budget
+   * nine of getanyapi.com's twenty-one phrasings went unasked on 2026-09-14,
+   * which is why it had no search for LinkedIn, YouTube or Facebook. One Google
+   * query is $0.0005, so the page's own count is what the opening set costs.
+   */
+  it("asks every phrasing the page produced, however small the tier's budget", () => {
+    const many = [...PHRASINGS, "reddit scraper", "linkedin scraper", "google maps scraper"];
+    const asked = buildDiscoveryQueries({
+      problemPhrasings: many,
+      destinations: [],
+      budget: 2,
+    });
+    expect(asked.map((item) => item.query)).toEqual(many.map((phrase) => googleQuery(phrase)));
+  });
+
+  /** The tier still bounds the places, which are the open-ended half. */
+  it("keeps the tier's budget on the places the page names", () => {
+    const placed = buildDiscoveryQueries({
+      problemPhrasings: PHRASINGS,
+      destinations: DESTINATIONS,
+      budget: 2,
+    });
+    expect(placed.filter((item) => item.destination !== null)).toHaveLength(2);
+    expect(placed.filter((item) => item.destination === null)).toHaveLength(PHRASINGS.length);
   });
 
   /**
@@ -640,12 +667,12 @@ describe("the plan the ranking publishes", () => {
    * behind the evidence instead, so this goes through the real ranking.
    */
   it("falls back to the phrasing the evidence came from, not a colliding one", () => {
-    const phrasings = ["reddit scraper api for comments", "reddit scraper api for images"];
+    const phrasings = ["reddit scraper api comments", "reddit scraper api images"];
     const collided: EvidenceLike[] = [
       {
         postId: "c1",
         subreddit: "webscraping",
-        query: googleQuery("reddit scraper api for comments"),
+        query: googleQuery("reddit scraper api comments"),
         family: "reddit-scraper-api",
         destination: null,
         position: 1,
@@ -663,7 +690,89 @@ describe("the plan the ranking publishes", () => {
       limits: TIERS.free,
     });
     expect(colliding.keywords).toEqual([
-      { keyword: "reddit scraper api for comments", evidence: 1 },
+      { keyword: "reddit scraper api comments", evidence: 1 },
+    ]);
+  });
+
+  /**
+   * Reddit search matches words where Google reads meaning, so a phrasing long
+   * enough to be a sentence matches most of the site. Measured 2026-09-14:
+   * "another provider means another schema again" returns Schema Therapy, and
+   * "need data without another subscription" returns phone data plans. Nothing
+   * is lost by leaving it out - Google still asks it in discovery and in the
+   * Reddit SEO tab.
+   */
+  it("does not hand Reddit search a phrasing long enough to be a sentence", () => {
+    const sentence = planFromRanks({
+      communities: [],
+      families: rankFamilies(
+        [
+          {
+            postId: "s1",
+            subreddit: "dataengineering",
+            query: googleQuery("another provider means another schema again"),
+            family: "another-provider-means",
+            destination: null,
+            position: 1,
+            title: "How do you handle schema changes when downstream consumers expect stability?",
+            snippet: "Every provider has its own shape.",
+            relevance: "relevant",
+          },
+        ],
+        [],
+        ["another provider means another schema again"],
+      ),
+      competitors: [],
+      scopedCommunities: [],
+      productNumbers: new Set<string>(),
+      limits: TIERS.free,
+    });
+    expect(sentence.keywords).toEqual([]);
+  });
+
+  /**
+   * A refusal word is not a constraint. `(api) AND (without)` asks for every
+   * post about an API, and on lurk.so on 2026-09-14 that search and its two
+   * siblings produced 0, 0 and 1 leads against 7 for "instagram api".
+   */
+  it("writes no search when the only constraint the evidence carries is a refusal", () => {
+    const refusal = planFromRanks({
+      communities: [],
+      families: [
+        {
+          family: "pay-per-request",
+          weighted: 2,
+          phrases: ["an api without a monthly plan", "api without subscription"],
+          asked: null,
+        },
+      ],
+      competitors: [],
+      scopedCommunities: [],
+      productNumbers: new Set<string>(),
+      limits: TIERS.free,
+    });
+    expect(refusal.keywords).toEqual([]);
+  });
+
+  /** A stated number the product itself talks about is still a constraint. */
+  it("keeps a compiled search when the constraint is a number the product says", () => {
+    const compiled = planFromRanks({
+      communities: [],
+      families: [
+        {
+          family: "hotels-allow-18",
+          weighted: 4,
+          phrases: ["hotels that let 18 year olds check in", "hotel 18 check in"],
+          asked: null,
+        },
+      ],
+      competitors: [],
+      scopedCommunities: [],
+      productNumbers: PRODUCT_NUMBERS,
+      limits: TIERS.free,
+    });
+    expect(compiled.keywords).toEqual([
+      { keyword: '(hotel OR hotels) AND (18 OR "check in")', evidence: 4 },
     ]);
   });
 
