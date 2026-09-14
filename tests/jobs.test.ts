@@ -444,7 +444,7 @@ describe("what a finished scan queues", () => {
   });
 
   it("groups the leads a first year sweep wrote, which is a project's first themes", async () => {
-    vi.mocked(runBackfill).mockResolvedValue({ walks: 20, found: 500, judged: 500, leads: 7 });
+    vi.mocked(runBackfill).mockResolvedValue({ walks: 20, found: 500, judged: 500, leads: 7, cutShort: 0 });
 
     await JOB_HANDLERS.backfill(job);
 

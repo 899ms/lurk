@@ -193,6 +193,35 @@ describe.skipIf(!hasDatabase)("runBackfill against a database", () => {
     }
   });
 
+  it("ends only the walk whose page failed, and keeps the pages before it", async () => {
+    const row = await project();
+    const first = await posts(2);
+    const later = await posts(1);
+    const at = new Map<string, number>();
+    fetchSearch.mockImplementation(
+      async (_ctx: unknown, query: string, options: { sort?: string }) => {
+        const key = `${query} ${options.sort ?? "relevance"}`;
+        const index = at.get(key) ?? 0;
+        at.set(key, index + 1);
+        if (options.sort === "new" && index === 1) {
+          throw new Error("all providers failed");
+        }
+        const value =
+          index === 0 ? { posts: first, nextCursor: "page-2" } : { posts: later, nextCursor: null };
+        return { value, reused: true, costUsd: 0 };
+      },
+    );
+    model();
+
+    const outcome = await runBackfill(row.id);
+
+    expect(outcome.cutShort).toBe(1);
+    expect(outcome.walks).toBe(2);
+    expect(outcome.found).toBe(3);
+    expect(callsOf().filter((call) => call.sort === "relevance")).toHaveLength(2);
+    expect(callsOf().filter((call) => call.sort === "new")).toHaveLength(2);
+  });
+
   it("keeps walking past a page that carried nothing new", async () => {
     const row = await project();
     const repeated = await posts(2);
