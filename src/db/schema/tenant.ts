@@ -79,6 +79,14 @@ export const projects = pgTable("projects", {
   /** How buyers say the problem, in their words, taken from the product page. */
   problemPhrasings: jsonb("problem_phrasings"),
   tierSnapshot: text("tier_snapshot"),
+  /**
+   * When the first discovery finished and the project's own jobs were queued.
+   * Null means the project has been read but not yet set up, so the initial
+   * discovery still owes it a plan. It is written in the same transaction as
+   * those first jobs, so a crash between the two can never leave a project
+   * that looks finished and has nothing queued.
+   */
+  discoveredAt: timestamp("discovered_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

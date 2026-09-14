@@ -11,6 +11,7 @@ import {
   projects,
 } from "@/db/schema";
 import { scanNowAction } from "@/app/app/scan";
+import { enqueueJob } from "@/jobs/enqueue";
 import { requireLocalUser } from "@/lib/auth";
 import type { Destination } from "@/lib/discovery/queries";
 import { parseDestinations, parseTextList } from "@/lib/discovery/store";
@@ -419,7 +420,12 @@ export async function removeListItemAction(
   await saveLists(project.id, kind, lists);
 }
 
-/** Reads the product page again and replaces the profile it produced. */
+/**
+ * Reads the product page again, replaces the facts it produced, and asks for
+ * the plan to be learned again from them. The new facts and the bumped version
+ * are one write, so no job can read the new facts under the old version and
+ * keep a verdict that was made against a product we no longer describe.
+ */
 export async function rebuildProfileAction(formData: FormData) {
   const { user, project } = await ownedProject(
     String(formData.get("projectId") ?? ""),
@@ -427,8 +433,8 @@ export async function rebuildProfileAction(formData: FormData) {
   if (!project.url) {
     throw new Error("This project has no product URL to read.");
   }
-  await buildProfile(project.id, user.id, project.url);
-  await bumpProfileVersion(project.id);
+  await buildProfile(project.id, user.id, project.url, { rejudge: true });
+  await enqueueJob("discovery_initial", project.id);
   revalidatePath("/app", "layout");
 }
 

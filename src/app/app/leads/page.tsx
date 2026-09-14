@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { ActivityPoll } from "@/components/ActivityPoll";
 import { EmptyState } from "@/components/EmptyState";
 import { FeedFilters } from "@/components/leads/FeedFilters";
 import { HeldSection } from "@/components/leads/HeldSection";
@@ -10,11 +12,11 @@ import { buildStream, type CardLead } from "@/components/leads/stream";
 import { entryHref, selectEntry } from "@/components/leads/workspace";
 import { Button } from "@/components/ui/button";
 import { scanNowAction } from "@/app/app/scan";
-import { lastRunJob, nextScanJob } from "@/jobs/enqueue";
 import { requireLocalUser } from "@/lib/auth";
 import { FEED_WINDOWS, type FeedWindow, type LeadStatus } from "@/lib/feed";
 import { feedFacets, listLeads, listReviewItems } from "@/lib/leads";
 import { activeProject } from "@/lib/projects";
+import { isBusy, projectActivity } from "@/lib/projectActivity";
 import { scanReport, verdictSentence } from "@/lib/scan/report";
 
 type LeadsPageProps = {
@@ -44,6 +46,18 @@ const EMPTY_SENTENCE: Record<LeadStatus, string> = {
  */
 const PANE_HEIGHT = "calc(100dvh - var(--header-height) - var(--page-gutter) * 2)";
 const PANE_TOP = "calc(var(--header-height) + var(--page-gutter))";
+
+/** The same page over the whole of time, keeping every other filter pill. */
+function allTimeHref(params: Record<string, string | undefined>): string {
+  const query = new URLSearchParams();
+  for (const [name, value] of Object.entries(params)) {
+    if (value) {
+      query.set(name, value);
+    }
+  }
+  query.set("days", "all");
+  return `?${query.toString()}`;
+}
 
 function toCard(lead: Awaited<ReturnType<typeof listLeads>>[number]): CardLead {
   const isComment = lead.commentId !== null;
@@ -94,7 +108,7 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
 
   const status = STATUSES.find((one) => one === params.status) ?? "new";
   const days: FeedWindow = FEED_WINDOWS.find((one) => String(one) === params.days) ?? 30;
-  const [rows, facets, last, next, review, report] = await Promise.all([
+  const [rows, facets, activity, review, report] = await Promise.all([
     listLeads(project.id, {
       status,
       days,
@@ -103,8 +117,7 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
       theme: params.theme,
     }),
     feedFacets(project.id),
-    lastRunJob("scan", project.id),
-    nextScanJob(project.id),
+    projectActivity(project.id),
     listReviewItems(project.id, days),
     scanReport(project.id, days),
   ]);
@@ -116,6 +129,24 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
   // One sentence, in one of two places: over the list when it has leads to
   // count, and inside it when it is empty and has to say why.
   const sentence = verdictSentence(report, entries.length);
+  /**
+   * A window that holds nothing is not the same as a project that holds
+   * nothing: the first sweep reaches back a year, so the leads it found are
+   * usually outside the window the feed opens on. Counted only when there is
+   * an empty feed to explain.
+   */
+  const elsewhere =
+    entries.length === 0 && status === "new" && days !== "all"
+      ? buildStream(
+          (await listLeads(project.id, {
+            status,
+            days: "all",
+            subreddit: params.subreddit,
+            stage: params.stage,
+            theme: params.theme,
+          })).map(toCard),
+        ).length
+      : 0;
 
   return (
     <div className="flex flex-col gap-5">
@@ -126,7 +157,7 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
           </h2>
           <div className="flex flex-wrap items-baseline gap-x-1.5">
             {entries.length > 0 ? <p className="text-small text-fg-muted">{sentence}</p> : null}
-            <ScanStatus last={last} next={next} />
+            <ScanStatus activity={activity} />
           </div>
         </div>
         <form action={scanNowAction.bind(null, project.id)}>
@@ -136,6 +167,7 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
         </form>
       </div>
 
+      <ActivityPoll busy={isBusy(activity)} />
       <PeopleStrip entries={entries} />
       <FeedFilters facets={facets} />
 
@@ -150,7 +182,19 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
           </div>
           {entries.length === 0 ? (
             <p className="text-small p-3 text-fg-muted">
-              {status === "new" ? sentence : EMPTY_SENTENCE[status]}
+              {status !== "new" ? (
+                EMPTY_SENTENCE[status]
+              ) : elsewhere > 0 ? (
+                <>
+                  Nothing in this window.{" "}
+                  <Link className="underline" href={allTimeHref(params)}>
+                    {elsewhere} {elsewhere === 1 ? "lead" : "leads"} in all time
+                  </Link>
+                  .
+                </>
+              ) : (
+                sentence
+              )}
             </p>
           ) : (
             entries.map((entry) => (
