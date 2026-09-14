@@ -2,7 +2,7 @@ import { Cron } from "croner";
 import { db } from "@/db";
 import { projects } from "@/db/schema";
 import { config } from "@/lib/config";
-import { hasStaleEvaluations } from "@/lib/scan/rescore";
+import { projectsWithStaleEvaluations } from "@/lib/scan/rescore";
 import { enqueueOnce } from "./enqueue";
 import { claimNextJob, runClaimedJob } from "./runner";
 
@@ -55,6 +55,7 @@ export async function seedProjectScans(): Promise<void> {
   const rows = await db()
     .select({ id: projects.id, discoveredAt: projects.discoveredAt })
     .from(projects);
+  const stale = await projectsWithStaleEvaluations();
   for (const row of rows) {
     if (!row.discoveredAt) {
       /**
@@ -70,7 +71,7 @@ export async function seedProjectScans(): Promise<void> {
     await enqueueOnce("discovery_refresh", new Date(), row.id);
     await enqueueOnce("competitor_scan", new Date(), row.id);
     await enqueueOnce("seo_refresh", new Date(), row.id);
-    if (await hasStaleEvaluations(row.id)) {
+    if (stale.has(row.id)) {
       await enqueueOnce("rescore", new Date(), row.id);
     }
   }

@@ -22,7 +22,7 @@ describe.skipIf(!hasDatabase)("re-judging a project under a new scorer", () => {
   let db: typeof import("@/db").db;
   let schema: typeof import("@/db/schema");
   let runRescore: typeof import("@/lib/scan/rescore").runRescore;
-  let hasStaleEvaluations: typeof import("@/lib/scan/rescore").hasStaleEvaluations;
+  let projectsWithStaleEvaluations: typeof import("@/lib/scan/rescore").projectsWithStaleEvaluations;
   let SCORER_VERSION: string;
   let upsertPosts: typeof import("@/lib/reddit/store").upsertPosts;
   let eq: typeof import("drizzle-orm").eq;
@@ -31,7 +31,7 @@ describe.skipIf(!hasDatabase)("re-judging a project under a new scorer", () => {
     process.env.APP_ENCRYPTION_KEY ??= Buffer.alloc(32).toString("base64");
     ({ db } = await import("@/db"));
     schema = await import("@/db/schema");
-    ({ runRescore, hasStaleEvaluations } = await import("@/lib/scan/rescore"));
+    ({ runRescore, projectsWithStaleEvaluations } = await import("@/lib/scan/rescore"));
     ({ SCORER_VERSION } = await import("@/lib/scan/evaluations"));
     ({ upsertPosts } = await import("@/lib/reddit/store"));
     ({ eq } = await import("drizzle-orm"));
@@ -132,7 +132,7 @@ describe.skipIf(!hasDatabase)("re-judging a project under a new scorer", () => {
 
   it("finds the stale verdicts, re-judges them, and stamps the current scorer", async () => {
     const { project } = await fixture({ lead: { status: "new" } });
-    expect(await hasStaleEvaluations(project.id)).toBe(true);
+    expect((await projectsWithStaleEvaluations()).has(project.id)).toBe(true);
     answers({});
 
     const outcome = await runRescore(project.id, randomUUID());
@@ -145,7 +145,7 @@ describe.skipIf(!hasDatabase)("re-judging a project under a new scorer", () => {
       .where(eq(schema.leadEvaluations.projectId, project.id));
     expect(stored.scorerVersion).toBe(SCORER_VERSION);
     expect(stored.contentHash).toBe("stale");
-    expect(await hasStaleEvaluations(project.id)).toBe(false);
+    expect((await projectsWithStaleEvaluations()).has(project.id)).toBe(false);
   });
 
   it("takes back a lead whose verdict dropped to review", async () => {
@@ -207,6 +207,6 @@ describe.skipIf(!hasDatabase)("re-judging a project under a new scorer", () => {
 
     expect(outcome).toEqual({ judged: 0, demoted: 0, promoted: 0, unchanged: 0 });
     expect(generateStructured).not.toHaveBeenCalled();
-    expect(await hasStaleEvaluations(project.id)).toBe(false);
+    expect((await projectsWithStaleEvaluations()).has(project.id)).toBe(false);
   });
 });

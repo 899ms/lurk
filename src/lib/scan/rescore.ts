@@ -1,4 +1,4 @@
-import { and, eq, ne, sql } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import { db } from "@/db";
 import { leadEvaluations, leads, redditComments, redditPosts } from "@/db/schema";
 import { writeProgress } from "@/jobs/enqueue";
@@ -47,19 +47,17 @@ type Stale = {
   item: ScorableItem;
 };
 
-/** True when this project holds a verdict an older scorer made. */
-export async function hasStaleEvaluations(projectId: string): Promise<boolean> {
+/**
+ * Every project holding a verdict an older scorer made. One query for all of
+ * them, because the caller is a loop over every project at boot and a query
+ * inside that loop is a round trip per project for a single boolean.
+ */
+export async function projectsWithStaleEvaluations(): Promise<Set<string>> {
   const rows = await db()
-    .select({ one: sql<number>`1` })
+    .selectDistinct({ projectId: leadEvaluations.projectId })
     .from(leadEvaluations)
-    .where(
-      and(
-        eq(leadEvaluations.projectId, projectId),
-        ne(leadEvaluations.scorerVersion, SCORER_VERSION),
-      ),
-    )
-    .limit(1);
-  return rows.length > 0;
+    .where(ne(leadEvaluations.scorerVersion, SCORER_VERSION));
+  return new Set(rows.map((row) => row.projectId));
 }
 
 /**
