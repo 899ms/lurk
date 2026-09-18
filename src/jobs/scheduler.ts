@@ -4,12 +4,13 @@ import { projects } from "@/db/schema";
 import { config } from "@/lib/config";
 import { projectsWithStaleEvaluations } from "@/lib/scan/rescore";
 import { enqueueOnce } from "./enqueue";
-import { claimNextJob, runClaimedJob } from "./runner";
+import { WATCHED_KINDS, claimNextJob, runClaimedJob } from "./runner";
 
 let started: Cron | null = null;
 
 /** Jobs running right now, and whether a pump is already handing work out. */
 let running = 0;
+let watched = 0;
 let pumping = false;
 
 /**
@@ -17,22 +18,46 @@ let pumping = false;
  * what makes the per-project exclusion in claimNextJob reliable: the next claim
  * always sees the lease the previous one wrote. A finishing job pumps again, so
  * a freed slot does not wait for the next tick.
+ *
+ * A watched job does not need a free slot. With every worker on a nightly scan
+ * a signup would otherwise look at "Starting" until one of them finished, so
+ * those run past the worker count, up to a ceiling of their own that stops a
+ * burst of signups from starting every sweep at once.
  */
-async function pump(workers: number): Promise<void> {
+async function pump(workers: number, watchedWorkers: number): Promise<void> {
   if (pumping) {
     return;
   }
   pumping = true;
   try {
-    while (running < workers) {
-      const job = await claimNextJob();
+    for (;;) {
+      const room = running < workers;
+      const watchedRoom = watched < watchedWorkers;
+      if (!room && !watchedRoom) {
+        return;
+      }
+      const job = await claimNextJob(
+        new Date(),
+        room && watchedRoom ? undefined : room ? "routine" : "watched",
+      );
       if (!job) {
         return;
       }
-      running += 1;
+      const isWatched = WATCHED_KINDS.includes(job.kind);
+      // A watched job counts against its own ceiling and leaves the routine
+      // slots alone, whichever way it was claimed.
+      if (isWatched) {
+        watched += 1;
+      } else {
+        running += 1;
+      }
       void runClaimedJob(job).finally(() => {
-        running -= 1;
-        void pump(workers);
+        if (isWatched) {
+          watched -= 1;
+        } else {
+          running -= 1;
+        }
+        void pump(workers, watchedWorkers);
       });
     }
   } finally {
@@ -95,6 +120,23 @@ async function seedProject(row: { id: string; discoveredAt: Date | null }, stale
 }
 
 /**
+ * The running scheduler's pump, kept on the process rather than the module:
+ * Next bundles instrumentation apart from the routes, so a Server Action that
+ * imported this file would find its own copy, which never started.
+ */
+const KICK = Symbol.for("lurk.scheduler.kick");
+type Kickable = { [KICK]?: () => void };
+
+/**
+ * Hands out due jobs now rather than at the next tick. A job queued by a person
+ * who is watching, such as a new project's discovery, otherwise sits for up to
+ * a minute before anything reads it. It does nothing where no scheduler runs.
+ */
+export function kickScheduler(): void {
+  (globalThis as Kickable)[KICK]?.();
+}
+
+/**
  * One tick a minute, handing due jobs to a bounded set of workers. Startup
  * queues the two instance-wide jobs and any project schedule that went missing;
  * from then on each job queues its own next run, and the runner re-queues a
@@ -103,11 +145,15 @@ async function seedProject(row: { id: string; discoveredAt: Date | null }, stale
 export function startScheduler(): Cron {
   if (!started) {
     const workers = config().SCHEDULER_WORKERS;
+    const watchedWorkers = config().SCHEDULER_WATCHED_WORKERS;
     void enqueueOnce("retention");
     void enqueueOnce("digest");
-    void seedProjectScans();
+    if (config().SCHEDULER_SEED) {
+      void seedProjectScans();
+    }
+    (globalThis as Kickable)[KICK] = () => void pump(workers, watchedWorkers);
     started = new Cron("* * * * *", async () => {
-      await pump(workers);
+      await pump(workers, watchedWorkers);
     });
   }
   return started;

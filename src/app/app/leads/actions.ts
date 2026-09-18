@@ -4,14 +4,17 @@ import { revalidatePath } from "next/cache";
 import { requireLocalUser } from "@/lib/auth";
 import { toRow } from "@/components/leads/stream";
 import { FEED_PAGE_SIZE, feedFilter, type FeedRow } from "@/lib/feed";
-import { listLeads, setLeadStatus } from "@/lib/leads";
+import { leadInSubreddit, listLeads, setLeadStatus } from "@/lib/leads";
+import { promoPolicyFor } from "@/lib/profile";
 import { projectForUser } from "@/lib/projects";
+import { sweepSnapshot, type SweepSnapshot } from "@/lib/sweep";
 
 async function ownedProject(projectId: string) {
   const user = await requireLocalUser();
   if (!(await projectForUser(user.id, projectId))) {
     throw new Error("That project is not yours");
   }
+  return user;
 }
 
 /** Takes a lead out of the feed without saying anything about why. */
@@ -48,4 +51,27 @@ export async function moreLeadsAction(
   const page = { limit: FEED_PAGE_SIZE, offset: Math.max(0, Math.trunc(offset)) };
   const rows = await listLeads(projectId, feedFilter(params), page);
   return rows.map(toRow);
+}
+
+/** The first sweep as it stands, for the board that draws it while it runs. */
+export async function sweepAction(projectId: string): Promise<SweepSnapshot | null> {
+  await ownedProject(projectId);
+  return sweepSnapshot(projectId);
+}
+
+/**
+ * The self-promotion rule of the community an opened lead sits in, read the
+ * first time anybody opens one there. Only a community this project holds a
+ * lead in can be asked about, so the call cannot be pointed at any subreddit
+ * to spend the house's money.
+ */
+export async function promoPolicyAction(
+  projectId: string,
+  subreddit: string,
+): Promise<string | null> {
+  const user = await ownedProject(projectId);
+  if (!(await leadInSubreddit(projectId, subreddit))) {
+    return null;
+  }
+  return promoPolicyFor(projectId, user.id, subreddit).catch(() => null);
 }

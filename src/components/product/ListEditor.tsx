@@ -3,6 +3,7 @@
 import { X } from "lucide-react";
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/select";
 import {
   addListItemAction,
   removeListItemAction,
@@ -10,13 +11,23 @@ import {
 } from "@/app/app/product/actions";
 
 /** One place or one phrasing, with the page text it was read from. */
-export type ListItem = { value: string; sourceText: string | null };
+export type ListItem = {
+  value: string;
+  sourceText: string | null;
+  /** The list this one lives in, where a card shows more than one. */
+  kind?: ListKind;
+};
 
 type ListEditorProps = {
   title: string;
   hint: string;
   placeholder: string;
   kind: ListKind;
+  /**
+   * The lists a card holds when it holds more than one, in the words a person
+   * choosing between them would use. What is added goes to the one picked.
+   */
+  kinds?: { value: ListKind; label: string }[];
   projectId: string;
   items: ListItem[];
 };
@@ -31,10 +42,12 @@ export function ListEditor({
   hint,
   placeholder,
   kind,
+  kinds,
   projectId,
   items,
 }: ListEditorProps) {
   const [draft, setDraft] = useState("");
+  const [addTo, setAddTo] = useState<ListKind>(kind);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -47,18 +60,19 @@ export function ListEditor({
         <span className="text-small text-fg-muted tabular-nums">{items.length}</span>
       </div>
       <p className="text-small text-fg-muted">{hint}</p>
-      <ul className="flex flex-col gap-2">
+      <ul className="flex flex-wrap gap-2">
         {items.length === 0 ? (
           <li className="text-body text-fg-muted">The page named none.</li>
         ) : (
           items.map((item) => (
             <li
-              key={item.value}
-              className="flex items-start gap-3 rounded-control border bg-surface-2 px-3 py-2"
+              key={`${item.kind ?? kind}:${item.value}`}
+              className="flex max-w-full items-start gap-2 rounded-control border bg-surface-2 px-3 py-1.5"
             >
               <span className="flex flex-col gap-1">
                 <span className="text-body text-fg">{item.value}</span>
-                {item.sourceText ? (
+                {/* A place the page names outright quotes itself, which says nothing twice. */}
+                {item.sourceText && item.sourceText !== item.value ? (
                   <span className="text-small text-fg-muted">{item.sourceText}</span>
                 ) : null}
               </span>
@@ -69,10 +83,10 @@ export function ListEditor({
                 onClick={() =>
                   startTransition(async () => {
                     setError(null);
-                    await removeListItemAction(kind, projectId, item.value);
+                    await removeListItemAction(item.kind ?? kind, projectId, item.value);
                   })
                 }
-                className="transition-motion ml-auto text-fg-muted transition-colors hover:text-fg"
+                className="transition-motion ml-auto mt-1.5 text-fg-muted transition-colors hover:text-fg"
               >
                 <X className="size-3" />
               </button>
@@ -84,7 +98,7 @@ export function ListEditor({
         onSubmit={(event) => {
           event.preventDefault();
           startTransition(async () => {
-            const result = await addListItemAction(kind, projectId, draft);
+            const result = await addListItemAction(addTo, projectId, draft);
             setError(result.error);
             if (!result.error) {
               setDraft("");
@@ -100,6 +114,15 @@ export function ListEditor({
           aria-label={`Add to ${title}`}
           className="h-10 flex-1 rounded-control border bg-surface px-2 text-body text-fg"
         />
+        {kinds ? (
+          <Select
+            className="h-10"
+            ariaLabel={`Which part of ${title}`}
+            value={addTo}
+            onValueChange={(next) => setAddTo(next as ListKind)}
+            options={kinds}
+          />
+        ) : null}
         <Button type="submit" variant="outline" size="lg" disabled={pending}>
           Add
         </Button>
