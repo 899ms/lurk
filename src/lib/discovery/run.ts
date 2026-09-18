@@ -24,6 +24,7 @@ import {
   type CompetitorRank,
 } from "./rank";
 import { runDiscoveryQueries } from "./serp";
+import { SMALL_SWEEP, smallSweep, spread } from "@/lib/sweepScale";
 import { applyRelevance, loadEvidence, UNLABELED, type EvidenceRow } from "./store";
 
 /**
@@ -123,6 +124,8 @@ export type DiscoveryInput = {
   destinations: Destination[];
   problemPhrasings: string[];
   limits: TierLimits | null;
+  /** Told each thing discovery finishes, in words for the person waiting on it. */
+  onProgress?: (text: string) => Promise<void> | void;
 };
 
 export type DiscoveryOutcome = {
@@ -159,17 +162,32 @@ export async function runDiscovery(input: DiscoveryInput): Promise<DiscoveryOutc
   // The opening set is the page's own size: one query per phrasing, plus the
   // places. What the tier bounds is how far past it expansion may go, which is
   // the distance between its two numbers.
+  // A trial-size project asks Google a few questions and none after them.
+  const small = smallSweep();
+  if (small) {
+    queries = spread(queries, SMALL_SWEEP.discoveryQueries);
+  }
   const opening = queries.length;
-  const ceiling = opening + Math.max(budget.max - budget.queries, 0);
+  const ceiling = small ? opening : opening + Math.max(budget.max - budget.queries, 0);
 
+  let round = 0;
   while (queries.length > 0) {
-    const round = await runRound(ctx, input.facts, input.destinations, queries, maxAgeMs, labelled);
+    round += 1;
+    await input.onProgress?.(
+      round === 1
+        ? `Asking Google ${queries.length} ${queries.length === 1 ? "question" : "questions"} about where your buyers ask`
+        : `Asking Google ${queries.length} more, where the first answers were thin`,
+    );
+    const round_ = await runRound(ctx, input.facts, input.destinations, queries, maxAgeMs, labelled);
     used.push(...queries);
-    labels.push(...round.labels);
-    costUsd += round.costUsd;
+    labels.push(...round_.labels);
+    costUsd += round_.costUsd;
     if (used.length > opening) {
-      perRound.push(round.newRelevant);
+      perRound.push(round_.newRelevant);
     }
+    await input.onProgress?.(
+      `Checked ${labels.length} Reddit threads Google ranks · ${round_.newRelevant} are your buyers talking`,
+    );
     if (expansionShouldStop(perRound)) {
       break;
     }
@@ -193,10 +211,14 @@ export async function runDiscovery(input: DiscoveryInput): Promise<DiscoveryOutc
     productTexts: [brief, ...input.problemPhrasings],
     phrasings: input.problemPhrasings,
   });
+  const communities = plan.subreddits.filter((row) => row.state === "active").length;
+  await input.onProgress?.(
+    `Picked ${communities} ${communities === 1 ? "community" : "communities"} and ${plan.keywords.length} searches to read`,
+  );
   return {
     queries: used.length,
     threads: dedupeThreads(rows).length,
-    communities: plan.subreddits.filter((row) => row.state === "active").length,
+    communities,
     keywords: plan.keywords.length,
     costUsd,
   };
