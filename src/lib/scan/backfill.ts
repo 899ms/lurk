@@ -19,14 +19,14 @@ import { creditSources, markCovered, recordSources, type CandidateSource } from 
 /**
  * The one-time sweep a new project starts with. A scan polls the last thirty
  * days; this asks Reddit's own search for a year of the problem's language, in
- * both orders it can be sorted, and keeps everything it finds however old it
+ * the order of relevance, and keeps everything it finds however old it
  * is, because a person who asked eleven months ago is still the person a
  * founder wants to answer. There is no reading gate and no `reddit.post` call
  * here: search now carries the body, and the reading costs more than judging
  * the same post twice would. It never writes `seo_opportunities` either, which
  * is what keeps the Reddit SEO tab a Google-only list.
  *
- * What it spends is bounded three ways, each measured 2026-09-18 on a sweep of
+ * What it spends is bounded four ways, the first three measured 2026-09-18 on a sweep of
  * 22 walks that read every page: 4,229 posts, 137 leads, $0.46. Read this way
  * the same sweep keeps 130 of the 137 for $0.11:
  *
@@ -38,6 +38,7 @@ import { creditSources, markCovered, recordSources, type CandidateSource } from 
  *            rejected.
  *   budget   POST_BUDGET posts, whatever the plan's size, so one project's
  *            first sweep costs about $0.20 at most.
+ *   leads    LEAD_CAP buyer leads, and the sweep stops searching and scoring.
  */
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -69,14 +70,29 @@ const DEPTH_PAGES = 6;
 const POST_BUDGET = 2500;
 
 /**
+ * Buyer leads a sweep stops at. The 2026-09-18 sweep wrote 337 of them, more
+ * than one person answers, and the searching and scoring after the first 150
+ * were over half of what it spent. Walks read by relevance and their first
+ * pages first, so the ones kept are the ones Reddit ranked highest. A chunk
+ * already being judged finishes, so a sweep can end a few over.
+ */
+const LEAD_CAP = 150;
+
+/**
  * The triage `asking` a title needs before its post is scored. Measured on the
  * 3,914 posts the sweep above scored (.context/probe-triage.ts): 0.10 keeps
  * 1,616 of them and every one of the 137 leads; 0.20 keeps 1,012 and loses 4.
  */
 const ASKING_FLOOR = 0.1;
 
-/** Both orders one query can be read in; see fetchSearch on why both are bought. */
-const SORTS = ["relevance", "new"] as const;
+/**
+ * The order a query is read in. It was both of Reddit's, until the newest-first
+ * copy of each search was measured 2026-09-18 on the first six pages of four
+ * projects' walks (a data API, a form builder, a hotel finder twice): 1,306 of
+ * the 2,095 posts scored were ones only it found, and 5 of the 289 leads. It
+ * doubled the search pages and more than doubled the scoring for 2% of the leads.
+ */
+const SORTS = ["relevance"] as const;
 
 export type BackfillOutcome = {
   /** Query and sort pairs walked. */
@@ -134,11 +150,12 @@ async function walk(
   found: Map<string, StoredPost>,
   sources: Map<string, CandidateSource[]>,
   landed: (posts: StoredPost[]) => void,
+  full: () => boolean,
 ): Promise<WalkEnd> {
   const { query, sort, walked } = state;
   let { cursor, stale } = state;
   for (let pages = 0; ; pages += 1) {
-    if (pages >= maxPages || found.size >= postBudget) {
+    if (pages >= maxPages || found.size >= postBudget || full()) {
       state.cursor = cursor;
       state.stale = stale;
       return "paused";
@@ -245,6 +262,11 @@ class Judge {
     private readonly report: () => Promise<void>,
   ) {}
 
+  /** True once the sweep holds LEAD_CAP buyer leads; nothing more is searched or scored. */
+  get full(): boolean {
+    return this.leads.filter((lead) => lead.kind === "buyer").length >= LEAD_CAP;
+  }
+
   /** Posts a page just carried; only the ones with no verdict are queued. */
   offer(posts: StoredPost[]): void {
     for (const post of unjudged(this.project, this.stored, posts)) {
@@ -282,6 +304,9 @@ class Judge {
   }
 
   private async judge(chunk: StoredPost[]): Promise<void> {
+    if (this.full) {
+      return;
+    }
     // Retention can delete an unreferenced post while this sweep still holds
     // it, so re-persist the chunk before pointing a source or a lead at it.
     await upsertPosts(chunk.map(asRawPost));
@@ -397,8 +422,15 @@ export async function runBackfill(projectId: string, jobId?: string): Promise<Ba
   // walks that found one.
   await report();
   const run = async (item: Walk, maxPages: number): Promise<WalkEnd> => {
-    const end = await walk(ctx, item, maxPages, postBudget, found, sourcesByPost, (posts) =>
-      judge.offer(posts),
+    const end = await walk(
+      ctx,
+      item,
+      maxPages,
+      postBudget,
+      found,
+      sourcesByPost,
+      (posts) => judge.offer(posts),
+      () => judge.full,
     );
     if (end === "cutShort") {
       cutShort += 1;
