@@ -1,11 +1,13 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { projects, subreddits } from "@/db/schema";
+import { projectCompetitors, projects, subreddits } from "@/db/schema";
 import { clientForUser } from "./anyapi";
+import { competitorHost } from "./competitors/host";
 import { generateStructured } from "./llm";
 import { PROFILE_SYSTEM, PROMO_POLICY_SYSTEM } from "./prompts";
 import { normalizeQuery, recordUsage } from "./reddit/fetch";
+import { capped, tierForUser } from "./tier";
 import { fetchSubredditDetails } from "./reddit/skus";
 import { assertHouseDataUnderCap } from "./usage";
 
@@ -13,10 +15,10 @@ import { assertHouseDataUnderCap } from "./usage";
 const SUBREDDIT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
- * What one product page can tell us. Communities, searches and competitors are
- * absent on purpose: those are discovered from Google evidence, so a model
- * that has heard of this company cannot hand the scan a community nobody has
- * ever seen a relevant thread in.
+ * What one product page can tell us. Communities and searches are absent on
+ * purpose: those are discovered from Google evidence, so a model that has heard
+ * of this company cannot hand the scan a community nobody has ever seen a
+ * relevant thread in. Competitors are asked for; see PROFILE_SYSTEM for why.
  */
 export const profileSchema = z.object({
   name: z.string(),
@@ -31,6 +33,10 @@ export const profileSchema = z.object({
   problemPhrasings: z.array(z.string()),
   /** The systems, sites and kinds of data the page says it works with. */
   platforms: z.array(z.string()),
+  /** Whether the product is itself a way to get those platforms' data. */
+  sellsPlatformData: z.boolean(),
+  /** The products a buyer would use instead, as the model names them. */
+  competitors: z.array(z.object({ name: z.string(), domain: z.string() })),
   budgetFit: z.string(),
 });
 
@@ -49,8 +55,16 @@ export type ProfileStep = "scrape" | "profile" | "done";
  * getanyapi.com on 2026-09-16 - so a platform the page names silently had no
  * search bought for it at all, and the name itself drifted between "twitter
  * api", "x twitter scraper" and "github api".
+ *
+ * Only a product that sells the platform's data gets them. They were tuned on
+ * getanyapi.com and then bought for everybody: on 2026-09-19 yarooms.com, room
+ * booking that connects to Microsoft 365, was searched as "azure ad scraper"
+ * and "outlook add-in api", and 81 of its 98 threads came back irrelevant.
  */
-export function platformPhrasings(platforms: string[]): string[] {
+export function platformPhrasings(platforms: string[], sellsPlatformData: boolean): string[] {
+  if (!sellsPlatformData) {
+    return [];
+  }
   const phrasings: string[] = [];
   const said = new Set<string>();
   for (const platform of platforms) {
@@ -132,6 +146,66 @@ export async function promoPolicyFor(
   return summary.policy;
 }
 
+/** How many competitors one reading of the page may name. */
+const PAGE_COMPETITORS = 5;
+
+/** The names worth keeping: said once, not the product itself, a domain only when it is one. */
+export function pageCompetitors(
+  productName: string,
+  named: { name: string; domain: string }[],
+): { name: string; domain: string | null }[] {
+  const own = productName.trim().toLowerCase();
+  const seen = new Set<string>();
+  const kept: { name: string; domain: string | null }[] = [];
+  for (const item of named) {
+    const name = item.name.trim().replace(/\s+/g, " ");
+    const key = name.toLowerCase();
+    if (!name || key === own || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    kept.push({ name, domain: competitorHost(item.domain) });
+  }
+  return kept.slice(0, PAGE_COMPETITORS);
+}
+
+/**
+ * Replaces the competitors the last reading of the page named with this one's.
+ * They are rows of their own source, which a discovery plan leaves standing
+ * (see publishDiscoveryPlan), and a name a person already typed in is theirs.
+ */
+async function writePageCompetitors(
+  projectId: string,
+  rows: { name: string; domain: string | null }[],
+): Promise<void> {
+  await db().transaction(async (tx) => {
+    await tx
+      .delete(projectCompetitors)
+      .where(
+        and(
+          eq(projectCompetitors.projectId, projectId),
+          eq(projectCompetitors.source, "page"),
+          eq(projectCompetitors.state, "active"),
+        ),
+      );
+    if (rows.length > 0) {
+      await tx
+        .insert(projectCompetitors)
+        .values(
+          rows.map((row) => ({
+            projectId,
+            name: row.name,
+            domain: row.domain,
+            role: "direct_substitute",
+            source: "page",
+            state: "active",
+          })),
+        )
+        .onConflictDoNothing();
+    }
+  });
+}
+
 export type ProfileOptions = {
   /**
    * Whether the facts written here invalidate every verdict made against the
@@ -141,6 +215,67 @@ export type ProfileOptions = {
    */
   rejudge?: boolean;
 };
+
+export type PageReseed = {
+  sellsPlatformData: boolean;
+  droppedPhrasings: string[];
+  competitors: string[];
+};
+
+/** What `platformPhrasings` builds, recognised by its shape: nothing else may end this way. */
+const PLATFORM_PHRASING = / (?:api|scraper)$/;
+
+/**
+ * Brings a project made before 2026-09-19 up to what a new one gets, and
+ * touches nothing else. The page is read again for the two things it was never
+ * asked: the platform searches are dropped when the product does not sell its
+ * platforms' data, and the competitors the reading names are written. The facts
+ * a person may since have edited stay as they are, and the profile version does
+ * not move, so no verdict is judged again. The caller queues the discovery that
+ * turns the corrected searches into a plan.
+ */
+export async function reseedFromPage(
+  project: { id: string; userId: string; url: string; problemPhrasings: string[] },
+  options: { dryRun?: boolean } = {},
+): Promise<PageReseed> {
+  const page = await scrapeProduct(project.id, project.userId, project.url);
+  const profile = await generateStructured({
+    purpose: "profile",
+    projectId: project.id,
+    schema: profileSchema,
+    system: PROFILE_SYSTEM,
+    prompt: [
+      `Website: ${page.url}`,
+      `Title: ${page.title}`,
+      `Description: ${page.description}`,
+      "",
+      (page.markdown ?? "").slice(0, 12000),
+    ].join("\n"),
+  });
+  const droppedPhrasings = profile.sellsPlatformData
+    ? []
+    : project.problemPhrasings.filter((item) => PLATFORM_PHRASING.test(item));
+  const { limits } = await tierForUser(project.userId);
+  const competitors = capped(
+    pageCompetitors(profile.name, profile.competitors),
+    limits?.competitors,
+  );
+  if (!options.dryRun) {
+    if (droppedPhrasings.length > 0) {
+      const dropped = new Set(droppedPhrasings);
+      await db()
+        .update(projects)
+        .set({ problemPhrasings: project.problemPhrasings.filter((item) => !dropped.has(item)) })
+        .where(eq(projects.id, project.id));
+    }
+    await writePageCompetitors(project.id, competitors);
+  }
+  return {
+    sellsPlatformData: profile.sellsPlatformData,
+    droppedPhrasings,
+    competitors: competitors.map((item) => item.name),
+  };
+}
 
 /**
  * Reads the product's own page and writes what the page says the product is.
@@ -175,7 +310,7 @@ export async function buildProfile(
 
   const problemPhrasings = [
     ...profile.problemPhrasings,
-    ...platformPhrasings(profile.platforms),
+    ...platformPhrasings(profile.platforms, profile.sellsPlatformData),
   ];
 
   await db()
@@ -197,6 +332,11 @@ export async function buildProfile(
         : {}),
     })
     .where(eq(projects.id, projectId));
+  const { limits } = await tierForUser(userId);
+  await writePageCompetitors(
+    projectId,
+    capped(pageCompetitors(profile.name, profile.competitors), limits?.competitors),
+  );
 
   await onStep?.("done");
   return { ...profile, problemPhrasings };
