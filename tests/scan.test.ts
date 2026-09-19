@@ -8,7 +8,7 @@ import {
   retrievalBudgets,
 } from "@/lib/scan/constants";
 import { BODY_CHAR_BUDGET, truncateBody } from "@/lib/scan/evidence";
-import { judge, routeLead } from "@/lib/scan/gates";
+import { decide, judge, routeLead } from "@/lib/scan/gates";
 import type { Assessment, ScorableItem, TriageItem } from "@/lib/scan/judgement";
 import { itemState, spans } from "@/lib/scan/spans";
 import { retentionCutoff } from "@/lib/retention";
@@ -161,6 +161,14 @@ describe("the qualification gates", () => {
     }
   });
 
+  it("qualifies an unsettled requirement only for someone asking outright", () => {
+    expect(decide(assessment({ fit: 2, intent: 3 })).decision).toBe("qualify");
+    expect(decide(assessment({ fit: 2, intent: 2 }))).toEqual({
+      decision: "review",
+      reasonCode: "insufficient_evidence",
+    });
+  });
+
   it("still holds a plausible buyer with one material unknown for review", () => {
     for (const patch of [
       { relationship: "buyer" as const, needState: "unknown" as const, fit: null },
@@ -189,6 +197,16 @@ describe("routing a judgement to a lane", () => {
 
   it("drops a need the person says is already met, however good the fit", () => {
     expect(routeLead(assessment({ needState: "resolved", fit: 4 }))).toBeNull();
+  });
+
+  // Labelled 2026-09-19: 68% of context leads were not worth a comment, most
+  // of them a rival being promoted or a thread the product only might fit.
+  it("drops someone promoting their own thing, however good the fit", () => {
+    expect(routeLead(assessment({ relationship: "seller", fit: 4 }))).toBeNull();
+  });
+
+  it("drops a thread the product only plausibly fits", () => {
+    expect(routeLead(assessment({ relationship: "helper", fit: 2 }))).toBeNull();
   });
 });
 

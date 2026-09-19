@@ -37,7 +37,13 @@ export function gateFailure(item: Assessment): ReasonCode | null {
   if (item.relationship !== "buyer" || item.needState === "unknown") {
     return "insufficient_evidence";
   }
-  if (item.fit === null || item.fit === 2) {
+  // A requirement the product facts cannot settle (fit 2) holds a lead, except
+  // for someone asking outright for a thing to use. The facts are a few pages of
+  // a website and are silent on most of what people ask for: "under $100",
+  // "works on a Mac". Holding those cost 8 of the 156 strongest labelled leads
+  // on 2026-09-19 and kept out almost nothing wrong.
+  const askingOutright = item.intent !== null && item.intent >= 3;
+  if (item.fit === null || (item.fit === 2 && !askingOutright)) {
     return "insufficient_evidence";
   }
   if (item.intent === null) {
@@ -102,23 +108,24 @@ export function decide(item: Assessment): { decision: Decision; reasonCode: Reas
 export type LeadKind = "buyer" | "context";
 
 /** The gate failures that are still a thread worth commenting in. */
-const CONTEXT_FAILURES: ReasonCode[] = ["seller_only", "helper_only", "no_active_need"];
+const CONTEXT_FAILURES: ReasonCode[] = ["helper_only", "no_active_need"];
 
 /**
  * Where this assessment belongs, or null when it belongs nowhere. A buyer with
- * an open need the product covers is the feed's own lead. Someone who sells,
- * someone helping another person, and a thread where nobody asks are not
- * buyers, but when the product plainly does the job they are talking about
- * (the same fit floor `wrong_job` uses) a comment there is worth writing. A
- * settled need and a job the product does not do stay rejections: there is
- * nothing to say in those threads.
+ * an open need the product covers is the feed's own lead. Someone helping
+ * another person and a thread where nobody asks are not buyers, but when the
+ * product plainly does the job they are talking about (fit 3, not the fit 2 a
+ * missing fact leaves) a comment there is worth writing. Someone promoting
+ * their own thing is not: on the posts labelled 2026-09-19 those threads were
+ * a rival's launch, and a reply there is an advert under an advert. A settled
+ * need and a job the product does not do stay rejections too.
  */
 export function routeLead(item: Assessment): LeadKind | null {
   const failure = gateFailure(item);
   if (decide(item).decision === "qualify") {
     return "buyer";
   }
-  if (failure && CONTEXT_FAILURES.includes(failure) && item.fit !== null && item.fit >= 2) {
+  if (failure && CONTEXT_FAILURES.includes(failure) && item.fit !== null && item.fit >= 3) {
     return "context";
   }
   return null;

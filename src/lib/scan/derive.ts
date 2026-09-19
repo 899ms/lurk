@@ -18,6 +18,7 @@ import type { Spans } from "./spans";
  */
 const YES = 0.5;
 
+
 function oneOf<T extends string>(value: string, allowed: readonly T[], fallback: T): T {
   return (allowed as readonly string[]).includes(value) ? (value as T) : fallback;
 }
@@ -43,7 +44,13 @@ export function readingFrom(answers: Answers, prefix: string, sentences: Spans):
  * cannot meet is a wrong job whatever else is true. A job the product does not
  * do is audience overlap at best. Otherwise the requirement decides: met is 4,
  * none stated is 3, and one the facts cannot settle is 2, which the gates hold
- * for review rather than qualify.
+ * for review unless the person is asking outright.
+ *
+ * The audience answer is deliberately not read once the product does the job.
+ * Gating on a confident no took the wrong leads shown from 18% to 14% on the
+ * posts labelled 2026-09-19, and took 21 of the 143 strongest real leads with
+ * them: "who buys it" is one sentence off a homepage, and an agency burned by
+ * an expired QR code is not the "indie makers" it names.
  */
 export function fitFrom(answers: Answers, prefix: string): number {
   const requirement = oneOf(choice(answers, `${prefix}__hard_requirement`).choice, REQUIREMENT, "unknown");
@@ -93,7 +100,10 @@ export function assessmentFrom(
   prefix: string,
 ): Assessment {
   const fit = fitFrom(answers, prefix);
-  const intent = Math.round(score(answers, `${prefix}__intent`).score);
+  // Someone who would not welcome a product at all has no need of one to act
+  // on, however explicit their question: they are asking for advice, not for this.
+  const asked = Math.round(score(answers, `${prefix}__intent`).score);
+  const intent = noul(answers, `${prefix}__wants_offering`) < YES ? Math.min(asked, 1) : asked;
   return {
     id,
     relationship: reading.relationship,

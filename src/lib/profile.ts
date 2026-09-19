@@ -42,6 +42,45 @@ export const profileSchema = z.object({
 
 export type ProductProfile = z.infer<typeof profileSchema>;
 
+/** One limit as the model returns it: the claim, and the page's own words it rests on. */
+const groundedSchema = z.object({ text: z.string(), sourceText: z.string() });
+
+/** What the model is asked for: the profile, with every limit carrying its source. */
+const readingSchema = profileSchema.extend({
+  exclusions: z.array(groundedSchema),
+  notBuyers: z.array(groundedSchema),
+});
+
+/** Text as a quote is compared against it: no markdown, no case, no spacing. */
+function flat(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/[*_#`>|~\\]/g, "")
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * The limits whose source really is on the site. A limit is the one kind of
+ * fact that loses leads silently when it is wrong, and asked to infer them the
+ * model wrote "does not host applications" for a host whose own menu sells
+ * application hosting (2026-09-19: 19 false exclusions in 58 profiles, nearly
+ * all a thing the homepage did not mention and another page sold). So a limit
+ * stands only on words the site says, and the code checks that it says them.
+ */
+export function groundedLimits(items: z.infer<typeof groundedSchema>[], siteText: string): string[] {
+  const site = flat(siteText);
+  return items
+    .filter((item) => {
+      const source = flat(item.sourceText);
+      return item.text.trim().length > 0 && source.length >= 4 && site.includes(source);
+    })
+    .map((item) => item.text.trim());
+}
+
 export type ProfileStep = "scrape" | "profile" | "done";
 
 /**
@@ -105,6 +144,63 @@ async function scrapeProduct(projectId: string, userId: string, url: string) {
     throw new Error(`AnyAPI could not read ${url}`);
   }
   return res.output.data;
+}
+
+/** The pages that say what a homepage leaves out, in the order they are worth reading. */
+const SITE_PAGES = [/pric|plans/i, /feature|product|solution|how-it-works|services/i, /faq|help/i, /about/i];
+const MAX_SITE_PAGES = 3;
+const HOME_CHARS = 12000;
+const PAGE_CHARS = 8000;
+
+/** The same-site links on this page that lead to one of SITE_PAGES, best first. */
+export function sitePageLinks(pageUrl: string, markdown: string): string[] {
+  let home: URL;
+  try {
+    home = new URL(pageUrl);
+  } catch {
+    return [];
+  }
+  const found = new Map<string, number>();
+  for (const match of markdown.matchAll(/\]\(([^)\s]+)/g)) {
+    let link: URL;
+    try {
+      link = new URL(match[1], home);
+    } catch {
+      continue;
+    }
+    const path = link.pathname.replace(/\/$/, "");
+    if (link.host !== home.host || path === home.pathname.replace(/\/$/, "") || !/^https?:$/.test(link.protocol)) {
+      continue;
+    }
+    const rank = SITE_PAGES.findIndex((pattern) => pattern.test(path));
+    const key = `${link.origin}${path}`;
+    if (rank !== -1 && path.split("/").length <= 3 && !found.has(key)) {
+      found.set(key, rank);
+    }
+  }
+  return [...found].sort((a, b) => a[1] - b[1]).slice(0, MAX_SITE_PAGES).map(([url]) => url);
+}
+
+/**
+ * The product's page and the few pages beside it that say what a homepage does
+ * not: the price, the plans, the platforms, who it is for. Read from the
+ * homepage alone, a profile was right for 5 of 19 products on 2026-09-19; the
+ * pricing page was the richest thing missed. A page that will not load is left
+ * out, because the homepage is still a profile and its neighbours are a bonus.
+ */
+export async function readSite(projectId: string, userId: string, url: string) {
+  const home = await scrapeProduct(projectId, userId, url);
+  const links = sitePageLinks(home.url ?? url, home.markdown ?? "");
+  const others = await Promise.all(
+    links.map((link) => scrapeProduct(projectId, userId, link).catch(() => null)),
+  );
+  const markdown = [
+    (home.markdown ?? "").slice(0, HOME_CHARS),
+    ...others.flatMap((page, index) =>
+      page?.markdown ? [`\n\n--- Page: ${links[index]} ---\n\n${page.markdown.slice(0, PAGE_CHARS)}`] : [],
+    ),
+  ].join("");
+  return { ...home, markdown };
 }
 
 /**
@@ -220,41 +316,44 @@ export type PageReseed = {
   sellsPlatformData: boolean;
   droppedPhrasings: string[];
   competitors: string[];
+  /** The exclusions and not-buyers written, which is none when the project already had its own. */
+  exclusions: string[];
+  notBuyers: string[];
 };
 
 /** What `platformPhrasings` builds, recognised by its shape: nothing else may end this way. */
 const PLATFORM_PHRASING = / (?:api|scraper)$/;
 
 /**
- * Brings a project made before 2026-09-19 up to what a new one gets, and
- * touches nothing else. The page is read again for the two things it was never
- * asked: the platform searches are dropped when the product does not sell its
- * platforms' data, and the competitors the reading names are written. The facts
- * a person may since have edited stay as they are, and the profile version does
- * not move, so no verdict is judged again. The caller queues the discovery that
- * turns the corrected searches into a plan.
+ * Brings an older project up to what a new one gets, and touches nothing else.
+ * The page is read again for what it was never asked: the platform searches are
+ * dropped when the product does not sell its platforms' data, the competitors
+ * the reading names are written, and a project with no exclusions or no
+ * not-buyers gets the ones the page implies (before 2026-09-19 they were asked
+ * for only where the page stated them, and 54 of 79 projects had none). A list
+ * that holds anything is a person's or an earlier reading's and stays as it is.
+ * Filling either one bumps the profile version, because a verdict made without
+ * them is a verdict about a different product. The caller queues the discovery
+ * that turns the corrected searches into a plan.
  */
 export async function reseedFromPage(
-  project: { id: string; userId: string; url: string; problemPhrasings: string[] },
+  project: {
+    id: string;
+    userId: string;
+    url: string;
+    problemPhrasings: string[];
+    exclusions: string[];
+    notBuyers: string[];
+  },
   options: { dryRun?: boolean } = {},
 ): Promise<PageReseed> {
-  const page = await scrapeProduct(project.id, project.userId, project.url);
-  const profile = await generateStructured({
-    purpose: "profile",
-    projectId: project.id,
-    schema: profileSchema,
-    system: PROFILE_SYSTEM,
-    prompt: [
-      `Website: ${page.url}`,
-      `Title: ${page.title}`,
-      `Description: ${page.description}`,
-      "",
-      (page.markdown ?? "").slice(0, 12000),
-    ].join("\n"),
-  });
+  const page = await readSite(project.id, project.userId, project.url);
+  const profile = await profileFromPage(project.id, page);
   const droppedPhrasings = profile.sellsPlatformData
     ? []
     : project.problemPhrasings.filter((item) => PLATFORM_PHRASING.test(item));
+  const exclusions = project.exclusions.length === 0 ? profile.exclusions : [];
+  const notBuyers = project.notBuyers.length === 0 ? profile.notBuyers : [];
   const { limits } = await tierForUser(project.userId);
   const competitors = capped(
     pageCompetitors(profile.name, profile.competitors),
@@ -268,12 +367,45 @@ export async function reseedFromPage(
         .set({ problemPhrasings: project.problemPhrasings.filter((item) => !dropped.has(item)) })
         .where(eq(projects.id, project.id));
     }
+    if (exclusions.length > 0 || notBuyers.length > 0) {
+      await db()
+        .update(projects)
+        .set({
+          ...(exclusions.length > 0 ? { exclusions } : {}),
+          ...(notBuyers.length > 0 ? { notBuyers } : {}),
+          profileVersion: sql`${projects.profileVersion} + 1`,
+        })
+        .where(eq(projects.id, project.id));
+    }
     await writePageCompetitors(project.id, competitors);
   }
   return {
     sellsPlatformData: profile.sellsPlatformData,
     droppedPhrasings,
     competitors: competitors.map((item) => item.name),
+    exclusions,
+    notBuyers,
+  };
+}
+
+/** What the site's pages say the product is. Reads them and writes nothing. */
+export async function profileFromPage(
+  projectId: string,
+  page: { url: string; title?: string | null; description?: string | null; markdown?: string | null },
+): Promise<ProductProfile> {
+  const markdown = page.markdown ?? "";
+  const reading = await generateStructured({
+    purpose: "profile",
+    projectId,
+    schema: readingSchema,
+    system: PROFILE_SYSTEM,
+    prompt: [`Website: ${page.url}`, `Title: ${page.title}`, `Description: ${page.description}`, "", markdown].join("\n"),
+  });
+  const siteText = `${page.title ?? ""}\n${page.description ?? ""}\n${markdown}`;
+  return {
+    ...reading,
+    exclusions: groundedLimits(reading.exclusions, siteText),
+    notBuyers: groundedLimits(reading.notBuyers, siteText),
   };
 }
 
@@ -291,22 +423,10 @@ export async function buildProfile(
   onStep?: (step: ProfileStep) => Promise<void> | void,
 ): Promise<ProductProfile> {
   await onStep?.("scrape");
-  const page = await scrapeProduct(projectId, userId, url);
+  const page = await readSite(projectId, userId, url);
 
   await onStep?.("profile");
-  const profile = await generateStructured({
-    purpose: "profile",
-    projectId,
-    schema: profileSchema,
-    system: PROFILE_SYSTEM,
-    prompt: [
-      `Website: ${page.url}`,
-      `Title: ${page.title}`,
-      `Description: ${page.description}`,
-      "",
-      (page.markdown ?? "").slice(0, 12000),
-    ].join("\n"),
-  });
+  const profile = await profileFromPage(projectId, page);
 
   const problemPhrasings = [
     ...profile.problemPhrasings,
