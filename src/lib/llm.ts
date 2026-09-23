@@ -76,6 +76,14 @@ export async function withCallTimeout<T>(
  * the two efforts did from each other. Triage moved the same way: 39.5s
  * against 106.6s, and it keeps more titles, which is the safe direction for a
  * pass whose job is to spend a reading budget rather than to reject anybody.
+ *
+ * The product reading, which also writes the brief, stays low too. Measured on
+ * 2026-09-23 over 167 sites and 2,256 labelled posts (.context/exp), a higher
+ * effort bought little and cost the user waiting on onboarding:
+ *
+ *   low      32s median   68% good, 7% bad leads
+ *   medium   53s median   69% good, 6% bad
+ *   high     75s median   70% good, 6% bad
  */
 const REASONING_EFFORT = "low";
 
